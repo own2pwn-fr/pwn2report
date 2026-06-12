@@ -1,0 +1,86 @@
+//! Application-wide error type.
+//!
+//! Every `#[tauri::command]` returns `Result<T, AppError>`. The error is
+//! serialized to a stable `{ "kind": "...", "message": "..." }` shape so the
+//! frontend can `switch` on `kind` without parsing English prose.
+
+use serde::ser::{Serialize, SerializeStruct, Serializer};
+use thiserror::Error;
+
+/// All failure modes the backend can surface to the UI.
+#[derive(Debug, Error)]
+pub enum AppError {
+    /// No vault is currently unlocked (no in-memory connection).
+    #[error("vault is locked")]
+    VaultLocked,
+
+    /// The supplied passphrase did not decrypt the vault (canary mismatch).
+    #[error("wrong passphrase")]
+    WrongPassphrase,
+
+    /// A requested entity (report / finding) does not exist.
+    #[error("not found")]
+    NotFound,
+
+    /// A database / SQLite error. The string is the underlying message.
+    #[error("database error: {0}")]
+    Db(String),
+
+    /// A rendering (Typst / PDF) error.
+    #[error("render error: {0}")]
+    Render(String),
+
+    /// An OS keychain error (kept rare — keychain ops degrade gracefully).
+    #[error("keychain error: {0}")]
+    Keychain(String),
+
+    /// A (de)serialization error for JSON sub-objects.
+    #[error("serialization error: {0}")]
+    Serialization(String),
+}
+
+impl AppError {
+    /// Machine-readable discriminant the frontend switches on.
+    fn kind(&self) -> &'static str {
+        match self {
+            AppError::VaultLocked => "vault_locked",
+            AppError::WrongPassphrase => "wrong_passphrase",
+            AppError::NotFound => "not_found",
+            AppError::Db(_) => "db",
+            AppError::Render(_) => "render",
+            AppError::Keychain(_) => "keychain",
+            AppError::Serialization(_) => "serialization",
+        }
+    }
+}
+
+/// Emit `{ "kind": "...", "message": "..." }`.
+impl Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("AppError", 2)?;
+        s.serialize_field("kind", self.kind())?;
+        s.serialize_field("message", &self.to_string())?;
+        s.end()
+    }
+}
+
+/// Map rusqlite errors into `AppError`. A wrong SQLCipher key surfaces as a
+/// generic SQLite error on the first real query; the canary check upgrades
+/// that to `WrongPassphrase` explicitly, so here we keep it as `Db`.
+impl From<rusqlite::Error> for AppError {
+    fn from(e: rusqlite::Error) -> Self {
+        AppError::Db(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(e: serde_json::Error) -> Self {
+        AppError::Serialization(e.to_string())
+    }
+}
+
+/// Convenience alias used throughout the backend.
+pub type AppResult<T> = Result<T, AppError>;

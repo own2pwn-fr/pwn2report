@@ -1,0 +1,6 @@
+# Pinned to typst 0.14's MSRV for reproducible builds. (The earlier
+# tauri-utils E0119 vs the `time` crate was a `time` 0.3.48 bug, fixed by
+# pinning `time = "=0.3.47"` in Cargo.toml — not a toolchain issue.)
+[toolchain]
+channel = "1.89.0"
+profile = "minimal"

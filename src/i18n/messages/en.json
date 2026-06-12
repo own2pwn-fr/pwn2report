@@ -1,0 +1,150 @@
+{
+  "app": {
+    "name": "pwn2report",
+    "tagline": "Write pentest reports, offline and encrypted."
+  },
+  "common": {
+    "cancel": "Cancel",
+    "create": "Create",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "back": "Back",
+    "confirm": "Confirm",
+    "loading": "Loading…",
+    "optional": "optional",
+    "none": "None",
+    "retry": "Retry",
+    "error": "Something went wrong"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "light": "Light mode",
+    "dark": "Dark mode"
+  },
+  "vault": {
+    "title": "Vault",
+    "createTitle": "Create your vault",
+    "createSubtitle": "Pick a passphrase to encrypt your reports on this device.",
+    "unlockTitle": "Unlock vault",
+    "unlockSubtitle": "Enter your passphrase to access your reports.",
+    "passphrase": "Passphrase",
+    "passphrasePlaceholder": "Enter a strong passphrase",
+    "confirmPassphrase": "Confirm passphrase",
+    "confirmPlaceholder": "Re-enter your passphrase",
+    "remember": "Remember on this device",
+    "rememberHint": "Stores the passphrase in the OS keychain for one-tap unlock.",
+    "create": "Create vault",
+    "unlock": "Unlock",
+    "unlockWithKeychain": "Unlock with saved passphrase",
+    "creating": "Creating…",
+    "unlocking": "Unlocking…",
+    "mismatch": "Passphrases do not match.",
+    "tooShort": "Passphrase must be at least 8 characters.",
+    "wrong": "Wrong passphrase. Please try again.",
+    "keychainFailed": "Could not unlock from the saved passphrase.",
+    "lock": "Lock vault",
+    "locked": "Vault locked"
+  },
+  "reports": {
+    "title": "Reports",
+    "subtitle": "All your engagements in one place.",
+    "new": "New report",
+    "newTitle": "Create a new report",
+    "fieldTitle": "Report title",
+    "fieldTitlePlaceholder": "e.g. Q3 Web Application Assessment",
+    "fieldClient": "Client",
+    "fieldClientPlaceholder": "e.g. Acme Corp",
+    "fieldType": "Report type",
+    "findingCount_one": "{{count}} finding",
+    "findingCount_other": "{{count}} findings",
+    "updated": "Updated {{date}}",
+    "open": "Open report",
+    "deleteConfirm": "Delete this report and all its findings? This cannot be undone.",
+    "empty": {
+      "title": "No reports yet",
+      "body": "Create your first report to start documenting findings.",
+      "cta": "Create your first report"
+    },
+    "createError": "Could not create the report."
+  },
+  "reportType": {
+    "web_pentest": "Web pentest",
+    "code_audit": "Code audit",
+    "red_team": "Red team"
+  },
+  "report": {
+    "execSummary": "Executive summary",
+    "execSummaryPlaceholder": "High-level overview for non-technical stakeholders…",
+    "scope": "Scope",
+    "scopePlaceholder": "Targets, environments and constraints in scope…",
+    "methodology": "Methodology",
+    "methodologyPlaceholder": "Approach, standards and tooling used…",
+    "exportPdf": "Export PDF",
+    "exporting": "Exporting…",
+    "exportSuccess": "PDF exported successfully.",
+    "exportError": "Could not export the PDF.",
+    "exportCancelled": "Export cancelled.",
+    "notFound": "Report not found.",
+    "details": "Report details"
+  },
+  "findings": {
+    "title": "Findings",
+    "new": "Add finding",
+    "newTitle": "New finding",
+    "editTitle": "Edit finding",
+    "empty": {
+      "title": "No findings yet",
+      "body": "Add your first finding to this report.",
+      "cta": "Add a finding"
+    },
+    "deleteConfirm": "Delete this finding? This cannot be undone.",
+    "createError": "Could not create the finding.",
+    "fieldTitle": "Title",
+    "fieldTitlePlaceholder": "e.g. SQL injection in login form",
+    "fieldSeverity": "Severity",
+    "fieldConfidence": "Confidence",
+    "fieldCwe": "CWE",
+    "fieldCwePlaceholder": "e.g. CWE-89",
+    "fieldCve": "CVE",
+    "fieldCvePlaceholder": "e.g. CVE-2024-1234",
+    "fieldCvssVector": "CVSS vector",
+    "fieldCvssVectorPlaceholder": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "fieldSummary": "Summary",
+    "fieldSummaryPlaceholder": "What is the issue, in one or two sentences…",
+    "fieldRootCause": "Root cause",
+    "fieldRootCausePlaceholder": "Why does this happen…",
+    "fieldAttackVector": "Attack vector",
+    "fieldAttackVectorPlaceholder": "How is it exploited…",
+    "fieldBusinessImpact": "Business impact",
+    "fieldBusinessImpactPlaceholder": "What it means for the business…",
+    "fieldTechnicalDetails": "Technical details",
+    "fieldTechnicalDetailsPlaceholder": "Deep technical write-up…",
+    "fieldFix": "Remediation",
+    "fieldFixPlaceholder": "How to fix it…"
+  },
+  "severity": {
+    "info": "Info",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical"
+  },
+  "confidence": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
+  },
+  "triage": {
+    "open": "Open",
+    "acknowledged": "Acknowledged",
+    "false_positive": "False positive",
+    "resolved": "Resolved"
+  },
+  "cvss": {
+    "score": "Score {{score}}"
+  }
+}

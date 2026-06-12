@@ -1,0 +1,211 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Local fonts — bundled in src-tauri/resources/fonts and copied into the app.
+   The .ttf files are served from the Tauri resource dir at runtime; for the
+   Vite dev/build pipeline we reference them via @font-face from public assets.
+   We point at the resource fonts through a relative path resolved at build.
+   ─────────────────────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Inter-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/Inter-SemiBold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/Inter-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Bold.ttf") format("truetype");
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-heading: "Inter", system-ui, sans-serif;
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  --background: hsl(0, 0%, 98%);
+  --foreground: hsl(0, 0%, 7%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(0, 0%, 7%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(0, 0%, 7%);
+  --primary: hsl(0, 0%, 7%);
+  --primary-foreground: hsl(0, 0%, 98%);
+  --secondary: hsl(0, 0%, 96%);
+  --secondary-foreground: hsl(0, 0%, 7%);
+  --muted: hsl(0, 0%, 96%);
+  --muted-foreground: hsl(0, 0%, 45%);
+  --accent: hsl(0, 0%, 96%);
+  --accent-foreground: hsl(0, 0%, 7%);
+  --destructive: hsl(0, 84%, 40%);
+  --border: hsl(0, 0%, 85%);
+  --input: hsl(0, 0%, 85%);
+  /* Brand accent — violet (hue 255), matches own2pwn landing. Raw HSL
+     components so callers can apply alpha via hsl(var(--accent-brand) / .18). */
+  --accent-brand: 255 92% 66%;
+  --ring: hsl(var(--accent-brand));
+  --radius: 0.625rem;
+
+  /* Severity scale (light) — ported from EASM attack-path-graph */
+  --sev-critical: 0 75% 50%;
+  --sev-high: 20 80% 48%;
+  --sev-medium: 38 85% 45%;
+  --sev-low: 140 55% 38%;
+  --sev-info: 140 30% 38%;
+}
+
+.dark {
+  --background: hsl(0, 0%, 7%);
+  --foreground: hsl(0, 0%, 98%);
+  --card: hsl(0, 0%, 10%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --popover: hsl(0, 0%, 13%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --primary: hsl(0, 0%, 98%);
+  --primary-foreground: hsl(0, 0%, 7%);
+  --secondary: hsl(0, 0%, 13%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --muted: hsl(0, 0%, 13%);
+  --muted-foreground: hsl(0, 0%, 65%);
+  --accent: hsl(0, 0%, 15%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 62%, 55%);
+  --border: hsl(0, 0%, 17%);
+  --input: hsl(0, 0%, 19%);
+  /* violet-400 #a78bfa */
+  --accent-brand: 255 92% 76%;
+  --ring: hsl(var(--accent-brand));
+
+  /* Severity scale (dark) */
+  --sev-critical: 0 75% 60%;
+  --sev-high: 20 80% 58%;
+  --sev-medium: 38 85% 58%;
+  --sev-low: 140 55% 55%;
+  --sev-info: 140 30% 50%;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up { animation: fadeInUp 0.4s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up { animation: none !important; }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+  }
+  .display-xl {
+    font-family: var(--font-heading);
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 0.98;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+  }
+}
+
+/* Card elevation */
+[data-slot="card"] {
+  box-shadow:
+    0 1px 0 inset hsl(0, 0%, 100% / 4%),
+    0 1px 2px hsl(0, 0%, 0% / 4%);
+}
+.dark [data-slot="card"] {
+  box-shadow:
+    0 1px 0 inset hsl(0, 0%, 100% / 4%),
+    0 1px 2px hsl(0, 0%, 0% / 30%),
+    0 8px 24px -12px hsl(0, 0%, 0% / 40%);
+}
+
+/* Glass card utility */
+.glass-card {
+  border: 1px solid var(--border);
+  background: hsl(0, 0%, 10% / 65%);
+  backdrop-filter: blur(12px);
+}
+
+/* Hairline borders */
+.hairline { border: 1px solid hsl(0 0% 50% / 0.18); }
+.hairline-t { border-top: 1px solid hsl(0 0% 50% / 0.18); }
+.hairline-b { border-bottom: 1px solid hsl(0 0% 50% / 0.18); }
+.dark .hairline,
+.dark .hairline-t,
+.dark .hairline-b { border-color: hsl(0 0% 17%); }
+
+.text-accent-brand { color: hsl(var(--accent-brand)); }
+.bg-accent-brand { background-color: hsl(var(--accent-brand)); }
+
+/* Severity color helpers consumed by SeverityBadge */
+.sev-critical { color: hsl(var(--sev-critical)); background: hsl(var(--sev-critical) / 0.14); border-color: hsl(var(--sev-critical) / 0.4); }
+.sev-high { color: hsl(var(--sev-high)); background: hsl(var(--sev-high) / 0.14); border-color: hsl(var(--sev-high) / 0.4); }
+.sev-medium { color: hsl(var(--sev-medium)); background: hsl(var(--sev-medium) / 0.14); border-color: hsl(var(--sev-medium) / 0.4); }
+.sev-low { color: hsl(var(--sev-low)); background: hsl(var(--sev-low) / 0.14); border-color: hsl(var(--sev-low) / 0.4); }
+.sev-info { color: hsl(var(--sev-info)); background: hsl(var(--sev-info) / 0.14); border-color: hsl(var(--sev-info) / 0.4); }

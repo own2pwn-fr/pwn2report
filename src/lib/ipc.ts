@@ -1,0 +1,83 @@
+// Typed wrappers around the Tauri `invoke` IPC bridge.
+//
+// Tauri v2 invoke args are camelCase on the JS side and are mapped to the
+// matching snake_case Rust params automatically. Every command returns a
+// Result on the Rust side; a rejection surfaces here as a thrown value shaped
+// like `IpcError` ({ kind, message }).
+
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  Finding,
+  FindingPatch,
+  IpcError,
+  NewFinding,
+  NewReport,
+  Report,
+  ReportPatch,
+  ReportSummary,
+  VaultStatus,
+} from "./types";
+
+/** Narrow an unknown thrown value into an IpcError for toast display. */
+export function asIpcError(err: unknown): IpcError {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "message" in err &&
+    typeof (err as Record<string, unknown>).message === "string"
+  ) {
+    const e = err as Record<string, unknown>;
+    return { kind: typeof e.kind === "string" ? e.kind : "error", message: e.message as string };
+  }
+  if (typeof err === "string") return { kind: "error", message: err };
+  return { kind: "error", message: "Unknown error" };
+}
+
+// ── Vault ──────────────────────────────────────────────────────────────────
+
+export const vaultStatus = () => invoke<VaultStatus>("vault_status");
+
+export const createVault = (passphrase: string, remember: boolean) =>
+  invoke<void>("create_vault", { passphrase, remember });
+
+export const unlockVault = (passphrase: string, remember: boolean) =>
+  invoke<void>("unlock_vault", { passphrase, remember });
+
+export const unlockWithKeychain = () => invoke<boolean>("unlock_with_keychain");
+
+export const lockVault = () => invoke<void>("lock_vault");
+
+export const forgetKeychain = () => invoke<void>("forget_keychain");
+
+// ── Reports ────────────────────────────────────────────────────────────────
+
+export const listReports = () => invoke<ReportSummary[]>("list_reports");
+
+export const createReport = (input: NewReport) => invoke<Report>("create_report", { input });
+
+export const getReport = (id: string) => invoke<Report>("get_report", { id });
+
+export const updateReport = (id: string, patch: ReportPatch) =>
+  invoke<Report>("update_report", { id, patch });
+
+export const deleteReport = (id: string) => invoke<void>("delete_report", { id });
+
+// ── Findings ───────────────────────────────────────────────────────────────
+
+export const listFindings = (reportId: string) =>
+  invoke<Finding[]>("list_findings", { reportId });
+
+export const createFinding = (reportId: string, input: NewFinding) =>
+  invoke<Finding>("create_finding", { reportId, input });
+
+export const updateFinding = (id: string, patch: FindingPatch) =>
+  invoke<Finding>("update_finding", { id, patch });
+
+export const deleteFinding = (id: string) => invoke<void>("delete_finding", { id });
+
+export const reorderFindings = (reportId: string, orderedIds: string[]) =>
+  invoke<void>("reorder_findings", { reportId, orderedIds });
+
+// ── Export ─────────────────────────────────────────────────────────────────
+
+export const exportPdf = (reportId: string) => invoke<number[]>("export_pdf", { reportId });
