@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "@/lib/ipc";
-import type { FindingPatch, NewFinding } from "@/lib/types";
+import type { FindingPatch, ImportFormat, NewFinding } from "@/lib/types";
 import { queryKeys } from "./query-keys";
 
 export function useFindings(reportId: string | undefined) {
@@ -47,5 +47,28 @@ export function useReorderFindings(reportId: string) {
   return useMutation({
     mutationFn: (orderedIds: string[]) => ipc.reorderFindings(reportId, orderedIds),
     onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.findings(reportId) }),
+  });
+}
+
+export function useCreateFindingFromKb(reportId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (kbId: string) => ipc.createFindingFromKb(reportId, kbId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.findings(reportId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.reports });
+    },
+  });
+}
+
+export function useImportFindings(reportId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ format, content }: { format: ImportFormat; content: string }) =>
+      ipc.importFindings(reportId, format, content),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.findings(reportId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.reports });
+    },
   });
 }

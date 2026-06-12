@@ -3,4 +3,6 @@ export const queryKeys = {
   reports: ["reports"] as const,
   report: (id: string) => ["reports", id] as const,
   findings: (reportId: string) => ["findings", reportId] as const,
+  kb: ["kb"] as const,
+  kbEntry: (id: string) => ["kb", id] as const,
 };

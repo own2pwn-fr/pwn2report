@@ -5,11 +5,17 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Current schema version. Bump when adding migrations.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 /// Create all tables/indexes if absent and stamp the schema version. Safe to
 /// call on every unlock (uses `IF NOT EXISTS`).
+///
+/// Migrations are expressed as a sequence of idempotent steps keyed off the
+/// current `PRAGMA user_version`, so fresh installs and v0→v1→v2 upgrades all
+/// converge on the same end state without re-running already-applied steps.
 pub fn init(conn: &Connection) -> AppResult<()> {
+    // v1 baseline: reports + findings. `IF NOT EXISTS` makes this a no-op on
+    // an already-migrated DB and the initial create on a fresh one.
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS meta (
@@ -59,7 +65,35 @@ pub fn init(conn: &Connection) -> AppResult<()> {
         "#,
     )?;
 
-    // Record schema version (informational; meta row + pragma).
+    // v2: knowledge-base of reusable, client-neutral finding templates. Same
+    // JSON-column shapes as `findings` for description/remediation/tags so a
+    // KB entry can be materialised into a report finding 1:1.
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS kb_entries (
+            id           TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            severity     TEXT NOT NULL,
+            confidence   TEXT NOT NULL DEFAULT 'medium',
+            kind         TEXT NOT NULL DEFAULT 'manual',
+            cwe          TEXT,
+            cve          TEXT,
+            cvss_vector  TEXT,
+            cvss_score   REAL,
+            description  TEXT NOT NULL DEFAULT '{}',
+            remediation  TEXT NOT NULL DEFAULT '{}',
+            tags         TEXT NOT NULL DEFAULT '[]',
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_kb_entries_title
+            ON kb_entries(title);
+        "#,
+    )?;
+
+    // Record schema version (informational; meta row + pragma). Stamped after
+    // every step above succeeds so an interrupted upgrade re-runs cleanly.
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     conn.execute(
         "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?1)",

@@ -103,6 +103,26 @@
     "new": "Add finding",
     "newTitle": "New finding",
     "editTitle": "Edit finding",
+    "addFromKb": "Add from KB",
+    "importCta": "Import findings",
+    "kbPicker": {
+      "title": "Add from knowledge base",
+      "empty": "Your knowledge base is empty. Add entries from the Knowledge Base page first.",
+      "added": "Finding added from the knowledge base.",
+      "error": "Could not add the finding from the knowledge base."
+    },
+    "import": {
+      "title": "Import findings",
+      "format": "Scanner format",
+      "file": "File",
+      "chooseFile": "Choose file",
+      "noFile": "No file selected",
+      "cta": "Import",
+      "importing": "Importing…",
+      "success_one": "Imported {{count}} finding.",
+      "success_other": "Imported {{count}} findings.",
+      "error": "Could not import the findings."
+    },
     "empty": {
       "title": "No findings yet",
       "body": "Add your first finding to this report.",
@@ -165,6 +185,35 @@
     "fieldRefPlaceholder": "https://…",
     "fieldTags": "Tags",
     "fieldTagPlaceholder": "e.g. authentication"
+  },
+  "kb": {
+    "title": "Knowledge base",
+    "subtitle": "A reusable catalog of vulnerabilities to drop into any report.",
+    "new": "New entry",
+    "newTitle": "New knowledge base entry",
+    "editTitle": "Edit knowledge base entry",
+    "searchPlaceholder": "Search by title or tag…",
+    "filterAllSeverities": "All severities",
+    "noMatches": "No entries match your search.",
+    "importBundled": "Import bundled catalog",
+    "importSuccess_one": "Imported {{count}} entry.",
+    "importSuccess_other": "Imported {{count}} entries.",
+    "importError": "Could not import the bundled catalog.",
+    "createError": "Could not create the entry.",
+    "deleteConfirm": "Delete this knowledge base entry? This cannot be undone.",
+    "empty": {
+      "title": "Your knowledge base is empty",
+      "body": "Import the bundled catalog of common vulnerabilities, or create your own entries.",
+      "cta": "Import bundled catalog"
+    }
+  },
+  "importFormat": {
+    "sarif": "SARIF",
+    "nuclei": "Nuclei",
+    "zap": "OWASP ZAP",
+    "burp": "Burp Suite",
+    "nessus": "Nessus",
+    "secai": "secai"
   },
   "kind": {
     "manual": "Manual",

@@ -47,6 +47,10 @@ pub enum AppError {
     /// A (de)serialization error for JSON sub-objects.
     #[error("serialization error: {0}")]
     Serialization(String),
+
+    /// A scanner-import parse failure (unknown format, malformed input).
+    #[error("import error: {0}")]
+    Import(String),
 }
 
 impl AppError {
@@ -62,6 +66,7 @@ impl AppError {
             AppError::Io(_) => "io",
             AppError::Keychain(_) => "keychain",
             AppError::Serialization(_) => "serialization",
+            AppError::Import(_) => "import",
         }
     }
 }

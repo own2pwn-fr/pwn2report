@@ -1,0 +1,340 @@
+[
+  {
+    "title": "SQL Injection",
+    "severity": "critical",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-89",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "cvss_score": 9.8,
+    "description": {
+      "summary": "User-controlled input is concatenated into a SQL query, allowing an attacker to alter the query's logic and read, modify, or destroy database contents.",
+      "root_cause": "The application builds SQL statements via string concatenation or interpolation of untrusted input instead of using parameterized queries (prepared statements). The data-plane and control-plane of the query are not separated, so attacker-supplied characters such as quotes and comments are interpreted as SQL syntax.",
+      "attack_vector": "An unauthenticated or authenticated attacker submits crafted input through a request parameter, header, or body field that reaches a SQL query. Classic payloads such as ' OR '1'='1, UNION SELECT ..., or time-based blind primitives (e.g. SLEEP, WAITFOR DELAY) confirm and exploit the flaw.",
+      "business_impact": "Full compromise of the affected database: disclosure of credentials and PII, tampering of records, authentication bypass, and in many configurations command execution on the database host or pivoting deeper into the network. This typically constitutes a reportable data breach.",
+      "technical_details": "Both in-band (error-based, UNION-based) and inferential (boolean/time-based blind) techniques apply depending on response behavior. Stacked queries and out-of-band exfiltration (DNS/HTTP) may be possible depending on the driver and DBMS. Second-order injection occurs when stored input is later used unsafely in a different query."
+    },
+    "remediation": {
+      "fix": "Use parameterized queries / prepared statements for every database interaction; never build SQL by concatenating untrusted input. Prefer a vetted ORM or query builder that parameterizes by default. Apply strict allow-list validation for identifiers (table/column names) that cannot be parameterized. Enforce least-privilege database accounts and disable stacked queries where possible.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/attacks/SQL_Injection",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/89.html"
+      ]
+    },
+    "tags": ["injection", "owasp-a03", "database"]
+  },
+  {
+    "title": "Reflected Cross-Site Scripting (XSS)",
+    "severity": "medium",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-79",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+    "cvss_score": 6.1,
+    "description": {
+      "summary": "User input is reflected into an HTTP response without proper output encoding, letting an attacker execute arbitrary JavaScript in a victim's browser.",
+      "root_cause": "The application echoes request data into HTML, attribute, JavaScript, or URL contexts without context-aware output encoding or sanitization. The browser cannot distinguish injected markup from legitimate page content.",
+      "attack_vector": "An attacker crafts a URL containing a script payload (e.g. <script>...</script> or an event handler) and lures a victim into clicking it. The payload reflects into the response and executes in the victim's session and origin.",
+      "business_impact": "Session hijacking, credential theft via fake forms, account takeover, defacement, and CSRF-token exfiltration. In an authenticated admin context this can escalate to full application compromise.",
+      "technical_details": "Exploitation depends on the injection context (HTML body, attribute, script, URL). Filters are commonly bypassed using alternate encodings, broken tags, or event handlers (onerror, onload). A Content-Security-Policy can blunt impact but is not a substitute for encoding."
+    },
+    "remediation": {
+      "fix": "Apply context-aware output encoding at every point untrusted data enters a response (HTML entity, attribute, JavaScript, and URL encoding as appropriate). Use a framework's auto-escaping templating and avoid sinks like innerHTML/document.write. Deploy a strict Content-Security-Policy as defense in depth and set the HttpOnly flag on session cookies.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/attacks/xss/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/79.html"
+      ]
+    },
+    "tags": ["xss", "owasp-a03", "client-side"]
+  },
+  {
+    "title": "Stored Cross-Site Scripting (XSS)",
+    "severity": "high",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-79",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
+    "cvss_score": 8.7,
+    "description": {
+      "summary": "Attacker-supplied script is persisted by the application and served to other users, executing in their browsers without any interaction beyond viewing the affected page.",
+      "root_cause": "Untrusted input is stored (database, file, cache) and later rendered into a response without output encoding. Because the payload is persisted, it targets every user who views the affected resource.",
+      "attack_vector": "An attacker submits a malicious payload via a field that is stored and later rendered to others (comments, profile fields, support tickets, log viewers). When a victim—often a higher-privileged user such as an administrator—views the content, the script runs.",
+      "business_impact": "Mass account takeover, worm-like propagation, theft of admin sessions, and full application compromise. Stored XSS is materially more severe than reflected because it needs no per-victim social engineering.",
+      "technical_details": "Payloads frequently target admin dashboards and moderation queues. Sanitization performed only on output of one view while another view renders the same stored value unsafely leads to bypasses. DOM-based sinks consuming stored data are equally affected."
+    },
+    "remediation": {
+      "fix": "Encode output for the exact context at render time and sanitize rich-text input server-side with a vetted allow-list sanitizer (e.g. DOMPurify for HTML fragments). Never trust that input was sanitized on the way in. Enforce a strict CSP and HttpOnly cookies as defense in depth.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/attacks/xss/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/79.html"
+      ]
+    },
+    "tags": ["xss", "owasp-a03", "stored", "client-side"]
+  },
+  {
+    "title": "Cross-Site Request Forgery (CSRF)",
+    "severity": "medium",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-352",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N",
+    "cvss_score": 6.5,
+    "description": {
+      "summary": "A state-changing request can be forged by a third-party site because the application relies solely on ambient credentials (cookies) without an unpredictable, request-bound token.",
+      "root_cause": "Sensitive actions are authenticated only by automatically-sent cookies and lack an anti-CSRF token or equivalent verification (SameSite cookies, custom header check). The server cannot tell a legitimate first-party request from one triggered by an attacker page.",
+      "attack_vector": "An attacker hosts a page that auto-submits a form or issues a request to the target endpoint. When an authenticated victim visits it, the browser attaches their session cookie and the action executes with their privileges.",
+      "business_impact": "Unauthorized state changes on behalf of the victim: password/email changes, fund transfers, privilege grants, or data deletion—potentially leading to account takeover.",
+      "technical_details": "GET-based state changes and forms without tokens are the prime targets. Weak token validation (token not bound to the session, accepted when empty, or reflected from a header an attacker controls) reintroduces the flaw. SameSite=Lax mitigates many but not all cross-site GET vectors."
+    },
+    "remediation": {
+      "fix": "Implement the synchronizer-token pattern: a per-session (or per-request) unpredictable token validated server-side on every state-changing request. Set session cookies to SameSite=Lax or Strict, and require re-authentication for high-value actions. Reject state-changing requests that arrive via GET.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/attacks/csrf",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/352.html"
+      ]
+    },
+    "tags": ["csrf", "owasp-a01", "session"]
+  },
+  {
+    "title": "Insecure Direct Object Reference (IDOR)",
+    "severity": "high",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-639",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+    "cvss_score": 8.1,
+    "description": {
+      "summary": "The application exposes a reference to an internal object (such as a record id) and authorizes access based on that reference alone, letting a user access or modify objects belonging to others.",
+      "root_cause": "Missing object-level authorization: the server trusts a client-supplied identifier without verifying the authenticated principal is allowed to act on that specific object. Authentication is enforced but per-object authorization is not.",
+      "attack_vector": "An authenticated attacker enumerates or guesses identifiers (sequential ids, UUIDs leaked elsewhere) in URLs, parameters, or API paths and substitutes another user's id to read or alter their data.",
+      "business_impact": "Horizontal privilege escalation and mass data exposure across tenants/users—invoices, messages, PII, or the ability to modify or delete records belonging to others. Frequently the root cause of large-scale breaches.",
+      "technical_details": "Affects REST/GraphQL endpoints, file downloads, and export functions. Predictable identifiers worsen exploitability but unpredictable ids are not a fix—authorization must be enforced on every access. Vertical variants (acting on admin objects) compound the impact."
+    },
+    "remediation": {
+      "fix": "Enforce object-level authorization on every request by checking that the authenticated principal owns or is permitted to access the referenced object, scoping queries by the session's user/tenant. Do not rely on unpredictable identifiers as an access-control mechanism. Centralize authorization checks so they cannot be forgotten per-endpoint.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/Top10/A01_2021-Broken_Access_Control/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/639.html"
+      ]
+    },
+    "tags": ["access-control", "owasp-a01", "authorization", "idor"]
+  },
+  {
+    "title": "Server-Side Request Forgery (SSRF)",
+    "severity": "high",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-918",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:L/A:N",
+    "cvss_score": 8.5,
+    "description": {
+      "summary": "The application can be coerced into making server-side HTTP/network requests to attacker-chosen destinations, enabling access to internal services and cloud metadata.",
+      "root_cause": "A server-side feature fetches a URL or host supplied (directly or indirectly) by the user without validating the destination against an allow-list. The server's network position is implicitly trusted by internal services.",
+      "attack_vector": "An attacker supplies a URL (webhook, image-fetch, PDF generator, URL preview) pointing at internal addresses (127.0.0.1, 169.254.169.254, RFC1918 ranges) or non-HTTP schemes (file://, gopher://) to reach services not exposed externally.",
+      "business_impact": "Disclosure of cloud instance credentials via the metadata endpoint (often leading to full cloud account compromise), access to internal admin panels and databases, port scanning of the internal network, and in some cases remote code execution via internal services.",
+      "technical_details": "Blind SSRF is exploitable via timing and out-of-band channels. DNS rebinding and redirect-following bypass naive host allow-lists. IMDSv1 on cloud providers is the highest-value target; protocol smuggling via gopher:// can reach Redis/Memcached."
+    },
+    "remediation": {
+      "fix": "Validate outbound destinations against a strict allow-list of hosts/schemes; resolve the hostname and re-check the resolved IP against blocklists of internal/loopback/link-local ranges to defeat DNS rebinding. Disable unused URL schemes and HTTP redirects, isolate the fetching service on a restricted network segment, and require IMDSv2 (token-bound) on cloud hosts.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/918.html"
+      ]
+    },
+    "tags": ["ssrf", "owasp-a10", "cloud", "network"]
+  },
+  {
+    "title": "Authentication Bypass",
+    "severity": "critical",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-287",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "cvss_score": 9.8,
+    "description": {
+      "summary": "An attacker can authenticate as another user or access protected functionality without valid credentials due to flawed authentication logic.",
+      "root_cause": "Authentication is implemented with logic flaws: trusting client-controlled state (e.g. a role or user-id parameter), insecure password-reset flows, broken multi-step login, default/hardcoded credentials, or verification that can be skipped by manipulating the request flow.",
+      "attack_vector": "Depending on the flaw: tampering with cookies/JWTs (alg:none, weak secret), skipping a verification step, manipulating a forced-browsing path to a post-auth page, exploiting a predictable password-reset token, or using default credentials.",
+      "business_impact": "Complete loss of confidentiality and integrity—an attacker assumes any identity, including administrators, leading to total application and data compromise.",
+      "technical_details": "Common variants: JWT signature not verified or accepts alg:none, session fixation, response-manipulation of a 'success' flag, reliance on client-side authorization redirects, and OTP/2FA flows that can be bypassed by replaying or omitting the second factor."
+    },
+    "remediation": {
+      "fix": "Centralize authentication and authorization in server-side middleware that runs before every protected handler; never trust client-supplied identity or role data. Verify JWT signatures with a strong secret/key and reject alg:none. Use vetted, well-tested auth libraries, enforce secure password-reset tokens, remove default credentials, and require properly-implemented MFA for sensitive accounts.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/287.html"
+      ]
+    },
+    "tags": ["authentication", "owasp-a07", "access-control"]
+  },
+  {
+    "title": "Sensitive Data Exposure",
+    "severity": "high",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-200",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "cvss_score": 7.5,
+    "description": {
+      "summary": "The application discloses sensitive information—credentials, PII, tokens, or internal details—through responses, transport, or storage that lack adequate protection.",
+      "root_cause": "Sensitive data is transmitted or stored without adequate encryption, returned in API responses beyond what the client needs, leaked in error messages/stack traces, or cached by intermediaries. Data classification and minimization are not enforced.",
+      "attack_vector": "Passive interception of cleartext traffic, reading verbose error responses, harvesting over-broad API payloads, accessing unprotected backups/logs, or extracting secrets embedded in client-side code.",
+      "business_impact": "Regulatory exposure (GDPR/PCI-DSS) from PII or cardholder-data leakage, credential theft enabling further attacks, and reputational damage from a disclosed breach.",
+      "technical_details": "Common sources: missing or weak TLS, verbose stack traces in production, debug endpoints, secrets in JavaScript bundles or repositories, and APIs that serialize entire ORM objects (including password hashes or tokens). Sensitive responses cached by CDNs/browsers extend exposure."
+    },
+    "remediation": {
+      "fix": "Classify data and apply controls accordingly: enforce TLS 1.2+ in transit and strong encryption at rest, minimize fields returned by APIs to only what each consumer needs, and strip sensitive values from logs and error responses. Disable debug output in production, set Cache-Control: no-store on sensitive responses, and keep secrets out of client code and source control.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/200.html"
+      ]
+    },
+    "tags": ["disclosure", "owasp-a02", "privacy"]
+  },
+  {
+    "title": "Security Misconfiguration",
+    "severity": "medium",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-16",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+    "cvss_score": 5.3,
+    "description": {
+      "summary": "The application, framework, server, or platform is deployed with insecure default or incomplete configuration, weakening the overall security posture.",
+      "root_cause": "Hardening was not applied: default accounts/credentials remain, unnecessary features/ports/services are enabled, directory listing is on, verbose errors are exposed, security headers are missing, or permissions are overly broad. Configuration drift accumulates across environments.",
+      "attack_vector": "An attacker probes for default credentials, exposed admin/management interfaces, listable directories, sample/debug endpoints, and missing headers, then leverages whatever is reachable.",
+      "business_impact": "Provides footholds that compound other vulnerabilities—exposed consoles, leaked configuration, or disabled protections can escalate to full compromise depending on what is exposed.",
+      "technical_details": "Frequently observed: missing HSTS/CSP/X-Content-Type-Options, permissive CORS (Access-Control-Allow-Origin: * with credentials), open cloud storage buckets, default management ports, and unpatched components retaining sample apps. Inconsistent config between staging and production is a common source."
+    },
+    "remediation": {
+      "fix": "Establish a repeatable, automated hardening baseline applied identically across environments (infrastructure-as-code). Remove default accounts and unused features, disable directory listing and verbose errors in production, set security headers (HSTS, CSP, X-Content-Type-Options, restrictive CORS), and review cloud resource permissions. Continuously scan for configuration drift.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/16.html"
+      ]
+    },
+    "tags": ["misconfiguration", "owasp-a05", "hardening"]
+  },
+  {
+    "title": "XML External Entity (XXE) Injection",
+    "severity": "high",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-611",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:L",
+    "cvss_score": 8.2,
+    "description": {
+      "summary": "An XML parser processes external entity declarations from untrusted input, enabling file disclosure, SSRF, and denial of service.",
+      "root_cause": "The XML parser is configured (often by default) to resolve external entities and DTDs. Untrusted XML can therefore declare entities that reference local files or remote URLs, which the parser dereferences.",
+      "attack_vector": "An attacker submits XML containing a DOCTYPE with an external entity (e.g. SYSTEM \"file:///etc/passwd\" or a URL to an internal service) via any XML-accepting endpoint—SOAP, SAML, file uploads (DOCX/SVG), or REST bodies.",
+      "business_impact": "Disclosure of local files (configuration, credentials, source), SSRF into internal infrastructure, and resource-exhaustion denial of service (billion-laughs). Can chain into deeper compromise via the SSRF primitive.",
+      "technical_details": "Out-of-band (OOB) XXE exfiltrates data via attacker-controlled DTDs when responses are blind. Formats layered on XML (SVG, DOCX/XLSX, SAML) are common delivery vehicles. Parameter entities enable OOB even when general entities are restricted."
+    },
+    "remediation": {
+      "fix": "Disable DTD processing and external entity resolution in every XML parser (set the parser's secure-processing/disallow-doctype features). Prefer less complex data formats such as JSON where feasible. Patch/upgrade XML libraries and validate uploaded documents that embed XML.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_(XXE)_Processing",
+        "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/611.html"
+      ]
+    },
+    "tags": ["xxe", "injection", "owasp-a05", "xml"]
+  },
+  {
+    "title": "Path Traversal",
+    "severity": "high",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-22",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "cvss_score": 7.5,
+    "description": {
+      "summary": "User input is used to build a filesystem path without proper containment, allowing access to files outside the intended directory.",
+      "root_cause": "The application concatenates untrusted input into a file path and reads/writes it without canonicalizing and confirming the result stays within an allowed base directory. Traversal sequences such as ../ escape the intended root.",
+      "attack_vector": "An attacker supplies a filename or path parameter containing ../ sequences, absolute paths, or encoded variants (%2e%2e%2f, ....//) to read sensitive files (configuration, /etc/passwd, application source) or, when used in a write/upload context, overwrite critical files.",
+      "business_impact": "Disclosure of configuration and credentials, source-code theft, and—when traversal feeds a write or upload primitive—arbitrary file write that can escalate to remote code execution.",
+      "technical_details": "Bypasses exploit inconsistent decoding (double URL-encoding, mixed slashes), null bytes on legacy stacks, and symlinks. On Windows, drive-letter and UNC paths add vectors. Archive-extraction variants (Zip Slip) traverse via crafted entry names."
+    },
+    "remediation": {
+      "fix": "Avoid passing user input to filesystem APIs; where unavoidable, resolve the path to its canonical absolute form and verify it is still within the intended base directory before access. Use an allow-list of permitted filenames or opaque identifiers mapped server-side to real paths. Run the service with least-privilege filesystem permissions.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/attacks/Path_Traversal",
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/22.html"
+      ]
+    },
+    "tags": ["path-traversal", "injection", "owasp-a01", "filesystem"]
+  },
+  {
+    "title": "Open Redirect",
+    "severity": "low",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-601",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+    "cvss_score": 4.3,
+    "description": {
+      "summary": "The application redirects users to a URL taken from untrusted input without validation, enabling convincing phishing and token-leak chains.",
+      "root_cause": "A redirect destination (e.g. a returnUrl/next parameter) is read from the request and used in a Location header or client-side redirect without verifying it points to an allowed, in-scope location.",
+      "attack_vector": "An attacker crafts a link to the trusted site that carries an external redirect target. The victim sees the legitimate domain, trusts the link, and is forwarded to an attacker-controlled site for phishing or to leak OAuth/SSO tokens passed through the redirect.",
+      "business_impact": "Greatly increases phishing success by abusing the organization's trusted domain and, when chained with authentication flows, can leak authorization codes or tokens leading to account takeover.",
+      "technical_details": "Naive checks (substring match on the host, startswith on a path) are commonly bypassed using \\\\ tricks, userinfo (https://trusted@evil.com), scheme-relative URLs (//evil.com), and encoded variants. Open redirects also weaken otherwise-mitigated SSRF/OAuth flows."
+    },
+    "remediation": {
+      "fix": "Do not use untrusted input as a redirect target. Prefer server-side mapping of short keys to known destinations, or validate the target against a strict allow-list of in-scope hosts/paths after full URL parsing. If external redirects are required, show an interstitial warning page.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/601.html"
+      ]
+    },
+    "tags": ["open-redirect", "owasp-a01", "phishing"]
+  },
+  {
+    "title": "Use of Weak or Broken Cryptography",
+    "severity": "medium",
+    "confidence": "high",
+    "kind": "manual",
+    "cwe": "CWE-327",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "cvss_score": 5.9,
+    "description": {
+      "summary": "The application relies on cryptographic algorithms, modes, or key-management practices that are broken or insufficient for the data they protect.",
+      "root_cause": "Use of deprecated primitives (MD5/SHA1 for security, DES/RC4, ECB mode), unsalted or fast hashing for passwords, hardcoded or reused keys/IVs, predictable randomness (non-CSPRNG), or improperly authenticated encryption.",
+      "attack_vector": "An attacker who can observe or obtain ciphertext/hashes exploits the weakness: cracking fast/unsalted password hashes offline, recovering plaintext from ECB patterns, forging data lacking integrity protection, or predicting tokens generated from a weak RNG.",
+      "business_impact": "Compromise of confidentiality and integrity of protected data—mass password recovery after a hash dump, forgeable tokens enabling authentication bypass, and decryption of sensitive records.",
+      "technical_details": "Password storage must use a memory-hard or deliberately slow KDF (argon2id, scrypt, bcrypt) with per-user salts. Symmetric encryption should use authenticated modes (AES-GCM, ChaCha20-Poly1305) with unique nonces. Security tokens and IVs must come from a cryptographically secure RNG."
+    },
+    "remediation": {
+      "fix": "Adopt modern, vetted algorithms and let well-reviewed libraries handle the details. Hash passwords with argon2id/scrypt/bcrypt and unique salts; encrypt with authenticated modes (AES-256-GCM / ChaCha20-Poly1305) using unique nonces; generate all secrets/tokens with a CSPRNG. Manage keys in a secrets manager/KMS with rotation, and remove all hardcoded keys.",
+      "code_patch": null,
+      "references": [
+        "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/327.html"
+      ]
+    },
+    "tags": ["cryptography", "owasp-a02", "passwords"]
+  }
+]

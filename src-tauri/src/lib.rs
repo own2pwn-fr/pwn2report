@@ -8,6 +8,7 @@
 mod commands;
 mod db;
 mod error;
+mod import;
 mod models;
 mod render;
 mod state;
@@ -58,6 +59,16 @@ pub fn run() {
             commands::templates::get_template,
             commands::templates::save_template,
             commands::templates::reset_template,
+            // knowledge base
+            commands::kb::kb_list,
+            commands::kb::kb_get,
+            commands::kb::kb_create,
+            commands::kb::kb_update,
+            commands::kb::kb_delete,
+            commands::kb::kb_import_bundled,
+            commands::kb::create_finding_from_kb,
+            // scanner importers
+            commands::import::import_findings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

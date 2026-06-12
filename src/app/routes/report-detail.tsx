@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Bug, Plus } from "lucide-react";
+import { ArrowLeft, BookMarked, Bug, FileUp, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,17 +14,27 @@ import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
 import { FindingCard } from "@/components/findings/finding-card";
 import { FindingForm } from "@/components/findings/finding-form";
+import { KbPicker } from "@/components/findings/kb-picker";
+import { ImportFindingsDialog } from "@/components/findings/import-findings-dialog";
 import { useReport, useUpdateReport } from "@/lib/queries/use-reports";
 import {
   useCreateFinding,
+  useCreateFindingFromKb,
   useDeleteFinding,
   useFindings,
+  useImportFindings,
   useUpdateFinding,
 } from "@/lib/queries/use-findings";
 import { asIpcError } from "@/lib/ipc";
 import { useDebouncedCallback } from "@/lib/use-debounced-callback";
 import { severityRank } from "@/lib/format";
-import type { Finding, FindingPatch, NewFinding, ReportPatch } from "@/lib/types";
+import type {
+  Finding,
+  FindingPatch,
+  ImportFormat,
+  NewFinding,
+  ReportPatch,
+} from "@/lib/types";
 
 /** A textarea that debounces updates back to the report on change. */
 function DebouncedField({
@@ -72,9 +82,13 @@ export function ReportDetail() {
   const createFinding = useCreateFinding(id ?? "");
   const updateFinding = useUpdateFinding(id ?? "");
   const deleteFinding = useDeleteFinding(id ?? "");
+  const createFromKb = useCreateFindingFromKb(id ?? "");
+  const importFindingsM = useImportFindings(id ?? "");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Finding | undefined>(undefined);
+  const [kbPickerOpen, setKbPickerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const commit = (patch: ReportPatch) =>
     updateReport.mutate(patch, {
@@ -112,6 +126,27 @@ export function ReportDetail() {
       onError: (err) => toast.error(asIpcError(err).message),
     });
   };
+
+  const handlePickFromKb = (kbId: string) =>
+    createFromKb.mutate(kbId, {
+      onSuccess: () => {
+        setKbPickerOpen(false);
+        toast.success(t("findings.kbPicker.added"));
+      },
+      onError: (err) => toast.error(asIpcError(err).message || t("findings.kbPicker.error")),
+    });
+
+  const handleImport = (format: ImportFormat, content: string) =>
+    importFindingsM.mutate(
+      { format, content },
+      {
+        onSuccess: (count) => {
+          setImportOpen(false);
+          toast.success(t("findings.import.success", { count }));
+        },
+        onError: (err) => toast.error(asIpcError(err).message || t("findings.import.error")),
+      },
+    );
 
   if (isLoading) {
     return <p className="px-6 py-10 text-sm text-muted-foreground">{t("common.loading")}</p>;
@@ -184,14 +219,24 @@ export function ReportDetail() {
 
       <Separator className="my-8" />
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold tracking-tight">{t("findings.title")}</h2>
-        {sortedFindings.length > 0 && (
-          <Button variant="brand" onClick={openCreate}>
-            <Plus />
-            {t("findings.new")}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => setKbPickerOpen(true)}>
+            <BookMarked />
+            {t("findings.addFromKb")}
           </Button>
-        )}
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <FileUp />
+            {t("findings.importCta")}
+          </Button>
+          {sortedFindings.length > 0 && (
+            <Button variant="brand" onClick={openCreate}>
+              <Plus />
+              {t("findings.new")}
+            </Button>
+          )}
+        </div>
       </div>
 
       {sortedFindings.length === 0 ? (
@@ -221,6 +266,20 @@ export function ReportDetail() {
         onCreate={handleCreate}
         onUpdate={handleUpdate}
         pending={createFinding.isPending || updateFinding.isPending}
+      />
+
+      <KbPicker
+        open={kbPickerOpen}
+        onOpenChange={setKbPickerOpen}
+        onPick={handlePickFromKb}
+        pending={createFromKb.isPending}
+      />
+
+      <ImportFindingsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImport={handleImport}
+        pending={importFindingsM.isPending}
       />
     </motion.div>
   );

@@ -12,14 +12,14 @@ use crate::models::{
 
 // --- enum <-> column string helpers ----------------------------------------
 
-fn confidence_str(c: Confidence) -> &'static str {
+pub(crate) fn confidence_str(c: Confidence) -> &'static str {
     match c {
         Confidence::Low => "low",
         Confidence::Medium => "medium",
         Confidence::High => "high",
     }
 }
-fn confidence_from(s: &str) -> Confidence {
+pub(crate) fn confidence_from(s: &str) -> Confidence {
     match s {
         "low" => Confidence::Low,
         "high" => Confidence::High,
@@ -27,7 +27,7 @@ fn confidence_from(s: &str) -> Confidence {
     }
 }
 
-fn severity_from(s: &str) -> Severity {
+pub(crate) fn severity_from(s: &str) -> Severity {
     match s {
         "info" => Severity::Info,
         "low" => Severity::Low,
@@ -37,7 +37,7 @@ fn severity_from(s: &str) -> Severity {
     }
 }
 
-fn kind_str(k: FindingKind) -> &'static str {
+pub(crate) fn kind_str(k: FindingKind) -> &'static str {
     match k {
         FindingKind::Manual => "manual",
         FindingKind::Sast => "sast",
@@ -46,7 +46,7 @@ fn kind_str(k: FindingKind) -> &'static str {
         FindingKind::Secret => "secret",
     }
 }
-fn kind_from(s: &str) -> FindingKind {
+pub(crate) fn kind_from(s: &str) -> FindingKind {
     match s {
         "sast" => FindingKind::Sast,
         "iac" => FindingKind::Iac,
@@ -76,7 +76,9 @@ fn triage_from(s: &str) -> TriageStatus {
 // --- JSON column helpers ----------------------------------------------------
 
 /// Parse a required JSON object column, defaulting on null/empty.
-fn json_obj<T: serde::de::DeserializeOwned + Default>(raw: Option<String>) -> AppResult<T> {
+pub(crate) fn json_obj<T: serde::de::DeserializeOwned + Default>(
+    raw: Option<String>,
+) -> AppResult<T> {
     match raw {
         Some(s) if !s.is_empty() => Ok(serde_json::from_str(&s)?),
         _ => Ok(T::default()),
@@ -92,7 +94,7 @@ fn json_opt<T: serde::de::DeserializeOwned>(raw: Option<String>) -> AppResult<Op
 }
 
 /// Parse a required JSON array column, defaulting to empty.
-fn json_vec(raw: Option<String>) -> AppResult<Vec<String>> {
+pub(crate) fn json_vec(raw: Option<String>) -> AppResult<Vec<String>> {
     match raw {
         Some(s) if !s.is_empty() => Ok(serde_json::from_str(&s)?),
         _ => Ok(Vec::new()),
@@ -240,6 +242,90 @@ pub fn create(conn: &Connection, report_id: &str, input: NewFinding) -> AppResul
     )?;
 
     get(conn, &id)
+}
+
+/// Bulk-insert findings under `report_id` in one transaction, appending them
+/// after any existing findings with incrementing `sort_order`. Returns the
+/// number of findings inserted. Used by the scanner-import command.
+pub fn create_bulk(
+    conn: &mut Connection,
+    report_id: &str,
+    inputs: Vec<NewFinding>,
+) -> AppResult<usize> {
+    // Guard: parent must exist (yield a clean NotFound).
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM reports WHERE id = ?1",
+            params![report_id],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if !exists {
+        return Err(AppError::NotFound);
+    }
+
+    let mut sort_order = next_sort_order(conn, report_id)?;
+    let now = now_rfc3339();
+    let tx = conn.transaction()?;
+    let mut inserted = 0usize;
+
+    for input in inputs {
+        let id = Uuid::new_v4().to_string();
+        let confidence = input.confidence.unwrap_or(Confidence::Medium);
+        let kind = input.kind.unwrap_or(FindingKind::Manual);
+        let triage_status = input.triage_status.unwrap_or(TriageStatus::Open);
+        let description = input.description.unwrap_or_default();
+        let remediation = input.remediation.unwrap_or_default();
+        let refs = input.refs.unwrap_or_default();
+        let tags = input.tags.unwrap_or_default();
+
+        tx.execute(
+            r#"
+            INSERT INTO findings
+                (id, report_id, sort_order, title, severity, confidence, kind,
+                 cwe, cve, cvss_vector, cvss_score, triage_status, triage_note,
+                 description, remediation, evidence, poc, refs, tags,
+                 created_at, updated_at)
+            VALUES
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                 ?8, ?9, ?10, ?11, ?12, ?13,
+                 ?14, ?15, ?16, ?17, ?18, ?19,
+                 ?20, ?20)
+            "#,
+            params![
+                id,
+                report_id,
+                sort_order,
+                input.title,
+                input.severity.as_str(),
+                confidence_str(confidence),
+                kind_str(kind),
+                input.cwe,
+                input.cve,
+                input.cvss_vector,
+                input.cvss_score,
+                triage_str(triage_status),
+                input.triage_note,
+                serde_json::to_string(&description)?,
+                serde_json::to_string(&remediation)?,
+                input
+                    .evidence
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
+                input.poc.as_ref().map(serde_json::to_string).transpose()?,
+                serde_json::to_string(&refs)?,
+                serde_json::to_string(&tags)?,
+                now,
+            ],
+        )?;
+        sort_order += 1;
+        inserted += 1;
+    }
+
+    tx.commit()?;
+    Ok(inserted)
 }
 
 /// Apply a partial update to a finding; returns the updated row.

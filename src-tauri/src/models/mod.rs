@@ -3,7 +3,9 @@
 //! fields). Enums serialize as snake_case to match the secai wire format.
 
 pub mod finding;
+pub mod kb;
 pub mod report;
 
 pub use finding::*;
+pub use kb::*;
 pub use report::*;

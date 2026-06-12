@@ -3,6 +3,8 @@
 
 pub mod export;
 pub mod findings;
+pub mod import;
+pub mod kb;
 pub mod reports;
 pub mod templates;
 pub mod vault;

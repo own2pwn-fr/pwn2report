@@ -4,6 +4,7 @@
 //! serde_json here so the rest of the app deals only in typed models.
 
 pub mod findings;
+pub mod kb;
 pub mod reports;
 
 use chrono::Utc;

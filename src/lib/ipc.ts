@@ -9,8 +9,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Finding,
   FindingPatch,
+  ImportFormat,
   IpcError,
+  KbEntry,
+  KbPatch,
   NewFinding,
+  NewKbEntry,
   NewReport,
   Report,
   ReportPatch,
@@ -110,3 +114,30 @@ export const saveTemplate = (reportType: ReportType, content: string) =>
 
 export const resetTemplate = (reportType: ReportType) =>
   invoke<void>("reset_template", { reportType });
+
+// ── Knowledge base ───────────────────────────────────────────────────────────
+
+export const kbList = () => invoke<KbEntry[]>("kb_list");
+
+export const kbGet = (id: string) => invoke<KbEntry>("kb_get", { id });
+
+export const kbCreate = (input: NewKbEntry) => invoke<KbEntry>("kb_create", { input });
+
+export const kbUpdate = (id: string, patch: KbPatch) =>
+  invoke<KbEntry>("kb_update", { id, patch });
+
+export const kbDelete = (id: string) => invoke<void>("kb_delete", { id });
+
+/** Import the catalog shipped with the app. Resolves to the inserted count. */
+export const kbImportBundled = () => invoke<number>("kb_import_bundled");
+
+// ── KB → report ──────────────────────────────────────────────────────────────
+
+export const createFindingFromKb = (reportId: string, kbId: string) =>
+  invoke<Finding>("create_finding_from_kb", { reportId, kbId });
+
+// ── Scanner import ───────────────────────────────────────────────────────────
+
+/** Import scanner output into a report. Resolves to the imported finding count. */
+export const importFindings = (reportId: string, format: ImportFormat, content: string) =>
+  invoke<number>("import_findings", { reportId, format, content });

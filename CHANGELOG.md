@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added — v2 (knowledge base & scanner importers)
+- Vulnerability knowledge base: reusable finding templates stored in the encrypted vault
+  (`kb_entries`), a bundled catalog of 13 common web/app vulnerabilities, full CRUD, an
+  "import bundled catalog" action, "Add from KB" to pre-fill a report finding, and a `/kb`
+  management page (search/filter/edit).
+- Scanner importers: SARIF, Nuclei, ZAP, Burp, Nessus and secai/EASM native JSON via
+  `import_findings(report_id, format, content)`; an in-report import dialog reads the file and
+  bulk-adds findings. Defensive per-tool severity mapping; `roxmltree` for the XML formats.
+- Schema migration to v2 (idempotent, `PRAGMA user_version`).
+
 ### Added — v1 backend (multi-format export, templates, vault management)
 - Two new report-type Typst themes: `code_audit` (source/file-line + vulnerable-code +
   suggested-patch emphasis) and `red_team` (attack-narrative: scenario → numbered

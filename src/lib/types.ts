@@ -148,6 +148,32 @@ export type FindingPatch = Partial<
   >
 >;
 
+// ── Knowledge base ───────────────────────────────────────────────────────────
+
+export interface KbEntry {
+  id: string;
+  title: string;
+  severity: Severity;
+  confidence: Confidence;
+  kind: FindingKind;
+  cwe: string | null;
+  cve: string | null;
+  cvss_vector: string | null;
+  cvss_score: number | null;
+  description: FindingDescription;
+  remediation: FindingRemediation;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewKbEntry = Omit<KbEntry, "id" | "created_at" | "updated_at">;
+
+export type KbPatch = Partial<NewKbEntry>;
+
+// Supported scanner import formats for `import_findings`.
+export type ImportFormat = "sarif" | "nuclei" | "zap" | "burp" | "nessus" | "secai";
+
 // Shape the Rust layer serializes its errors into.
 export interface IpcError {
   kind: string;
