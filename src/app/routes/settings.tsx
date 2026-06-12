@@ -11,10 +11,13 @@ import {
   Sparkles,
   Plug,
   Palette,
+  RefreshCw,
+  Upload,
+  Download,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +26,14 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -40,9 +51,10 @@ import {
   useTemplates,
 } from "@/lib/queries/use-templates";
 import { useAiConfig, useSaveAiConfig, useTestAiConnection } from "@/lib/queries/use-ai";
+import { useExportSyncBundle, useImportSyncBundle } from "@/lib/queries/use-sync";
 import { useOnboarding } from "@/lib/use-onboarding";
 import { setLanguage, SUPPORTED_LANGUAGES, type Language } from "@/i18n";
-import type { AiConfig, AiProvider, ReportType } from "@/lib/types";
+import type { AiConfig, AiProvider, ReportType, SyncSummary } from "@/lib/types";
 
 const MIN_PASSPHRASE = 8;
 const AI_PROVIDERS: AiProvider[] = ["ollama", "openai", "anthropic"];
@@ -406,6 +418,236 @@ function SecuritySection() {
   );
 }
 
+/**
+ * Passphrase prompt used by the sync export/import flows. When `confirm` is
+ * true it requires a matching second field (export); otherwise a single field
+ * (import). Validation is client-side; the resolved passphrase is handed back
+ * via `onSubmit`.
+ */
+function PassphraseDialog({
+  open: isOpen,
+  onOpenChange,
+  description,
+  confirm,
+  pending,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  description: string;
+  confirm: boolean;
+  pending: boolean;
+  onSubmit: (passphrase: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [passphrase, setPassphrase] = useState("");
+  const [confirmValue, setConfirmValue] = useState("");
+
+  // Reset the fields whenever the dialog opens so passphrases never linger.
+  useEffect(() => {
+    if (isOpen) {
+      setPassphrase("");
+      setConfirmValue("");
+    }
+  }, [isOpen]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passphrase) {
+      toast.error(t("settings.sync.passphraseEmpty"));
+      return;
+    }
+    if (confirm && passphrase !== confirmValue) {
+      toast.error(t("settings.sync.passphraseMismatch"));
+      return;
+    }
+    onSubmit(passphrase);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("settings.sync.passphraseTitle")}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="sync-pass">{t("settings.sync.passphrase")}</Label>
+            <Input
+              id="sync-pass"
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              autoComplete="off"
+              autoFocus
+              required
+            />
+          </div>
+          {confirm && (
+            <div className="space-y-1.5">
+              <Label htmlFor="sync-pass-confirm">{t("settings.sync.passphraseConfirm")}</Label>
+              <Input
+                id="sync-pass-confirm"
+                type="password"
+                value={confirmValue}
+                onChange={(e) => setConfirmValue(e.target.value)}
+                autoComplete="off"
+                required
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="submit" variant="brand" disabled={pending}>
+              {pending ? t("common.saving") : t("settings.sync.continue")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function SyncSection() {
+  const { t } = useTranslation();
+  const exportBundle = useExportSyncBundle();
+  const importBundle = useImportSyncBundle();
+
+  // Track which flow the passphrase dialog is serving, plus the file path the
+  // user already picked for that flow.
+  const [mode, setMode] = useState<"export" | "import" | null>(null);
+  const [path, setPath] = useState<string | null>(null);
+
+  const summaryToast = (s: SyncSummary) => {
+    const reports = t("settings.sync.summaryReports", {
+      added: s.reports_added,
+      updated: s.reports_updated,
+    });
+    const findings = t("settings.sync.summaryFindings", {
+      added: s.findings_added,
+      updated: s.findings_updated,
+    });
+    const kb = t("settings.sync.summaryKb", {
+      added: s.kb_added,
+      updated: s.kb_updated,
+    });
+    const images = t("settings.sync.summaryImages", { count: s.images_added });
+    toast.success(t("settings.sync.importSuccess", { reports, findings, kb, images }));
+  };
+
+  const handleExportClick = async () => {
+    const dest = await save({
+      defaultPath: `pwn2report-sync-${todayStamp()}.p2r`,
+      filters: [{ name: t("settings.sync.bundleFile"), extensions: ["p2r"] }],
+    });
+    if (!dest) return;
+    setPath(dest);
+    setMode("export");
+  };
+
+  const handleImportClick = async () => {
+    const src = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: t("settings.sync.bundleFile"), extensions: ["p2r"] }],
+    });
+    if (!src || typeof src !== "string") return;
+    setPath(src);
+    setMode("import");
+  };
+
+  const handlePassphrase = (passphrase: string) => {
+    if (!path) return;
+    if (mode === "export") {
+      exportBundle.mutate(
+        { passphrase, destPath: path },
+        {
+          onSuccess: () => {
+            setMode(null);
+            toast.success(t("settings.sync.exportSuccess"));
+          },
+          onError: (err) =>
+            toast.error(asIpcError(err).message || t("settings.sync.exportError")),
+        },
+      );
+    } else if (mode === "import") {
+      importBundle.mutate(
+        { passphrase, srcPath: path },
+        {
+          onSuccess: (summary) => {
+            setMode(null);
+            summaryToast(summary);
+          },
+          onError: (err) =>
+            toast.error(asIpcError(err).message || t("settings.sync.importError")),
+        },
+      );
+    }
+  };
+
+  const pending = exportBundle.isPending || importBundle.isPending;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <RefreshCw className="size-4 text-[hsl(var(--accent-brand))]" />
+          {t("settings.sync.title")}
+        </CardTitle>
+        <CardDescription>{t("settings.sync.subtitle")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <p className="text-sm text-muted-foreground">{t("settings.sync.description")}</p>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">{t("settings.sync.exportTitle")}</p>
+            <p className="text-sm text-muted-foreground">{t("settings.sync.exportHint")}</p>
+          </div>
+          <Button variant="outline" onClick={handleExportClick} disabled={pending}>
+            <Upload />
+            {exportBundle.isPending ? t("settings.sync.exporting") : t("settings.sync.exportCta")}
+          </Button>
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">{t("settings.sync.importTitle")}</p>
+            <p className="text-sm text-muted-foreground">{t("settings.sync.importHint")}</p>
+          </div>
+          <Button variant="outline" onClick={handleImportClick} disabled={pending}>
+            <Download />
+            {importBundle.isPending ? t("settings.sync.importing") : t("settings.sync.importCta")}
+          </Button>
+        </div>
+      </CardContent>
+
+      <PassphraseDialog
+        open={mode !== null}
+        onOpenChange={(o) => {
+          if (!o && !pending) setMode(null);
+        }}
+        description={
+          mode === "export"
+            ? t("settings.sync.passphraseExportDescription")
+            : t("settings.sync.passphraseImportDescription")
+        }
+        confirm={mode === "export"}
+        pending={pending}
+        onSubmit={handlePassphrase}
+      />
+    </Card>
+  );
+}
+
 function TemplatesSection() {
   const { t } = useTranslation();
   const { data: templates, isLoading } = useTemplates();
@@ -558,6 +800,7 @@ export function Settings() {
         <AppearanceSection />
         <AiSection />
         <SecuritySection />
+        <SyncSection />
         <TemplatesSection />
       </div>
     </motion.div>

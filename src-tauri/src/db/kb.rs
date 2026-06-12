@@ -49,6 +49,91 @@ pub fn list(conn: &Connection) -> AppResult<Vec<KbEntry>> {
     Ok(out)
 }
 
+/// Fetch all KB entries as full rows (used by the sync snapshot). Ordered by id
+/// for a deterministic snapshot.
+pub fn list_all(conn: &Connection) -> AppResult<Vec<KbEntry>> {
+    let mut stmt = conn.prepare("SELECT * FROM kb_entries ORDER BY id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row_to_kb(row)?);
+    }
+    Ok(out)
+}
+
+/// Whether a KB entry with this id exists.
+pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
+    let found: bool = conn
+        .query_row("SELECT 1 FROM kb_entries WHERE id = ?1", params![id], |_| {
+            Ok(true)
+        })
+        .optional()?
+        .unwrap_or(false);
+    Ok(found)
+}
+
+/// Insert a KB entry verbatim, preserving its id + timestamps (sync merge — NOT
+/// the id-generating [`create`]).
+pub fn insert_raw(conn: &Connection, e: &KbEntry) -> AppResult<()> {
+    conn.execute(
+        r#"
+        INSERT INTO kb_entries
+            (id, title, severity, confidence, kind, cwe, cve, cvss_vector,
+             cvss_score, description, remediation, tags, created_at, updated_at)
+        VALUES
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+        "#,
+        params![
+            e.id,
+            e.title,
+            e.severity.as_str(),
+            confidence_str(e.confidence),
+            kind_str(e.kind),
+            e.cwe,
+            e.cve,
+            e.cvss_vector,
+            e.cvss_score,
+            serde_json::to_string(&e.description)?,
+            serde_json::to_string(&e.remediation)?,
+            serde_json::to_string(&e.tags)?,
+            e.created_at,
+            e.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Overwrite an existing KB entry verbatim, preserving the incoming timestamps
+/// (sync LWW merge).
+pub fn update_raw(conn: &Connection, e: &KbEntry) -> AppResult<()> {
+    conn.execute(
+        r#"
+        UPDATE kb_entries SET
+            title = ?2, severity = ?3, confidence = ?4, kind = ?5, cwe = ?6,
+            cve = ?7, cvss_vector = ?8, cvss_score = ?9, description = ?10,
+            remediation = ?11, tags = ?12, created_at = ?13, updated_at = ?14
+        WHERE id = ?1
+        "#,
+        params![
+            e.id,
+            e.title,
+            e.severity.as_str(),
+            confidence_str(e.confidence),
+            kind_str(e.kind),
+            e.cwe,
+            e.cve,
+            e.cvss_vector,
+            e.cvss_score,
+            serde_json::to_string(&e.description)?,
+            serde_json::to_string(&e.remediation)?,
+            serde_json::to_string(&e.tags)?,
+            e.created_at,
+            e.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
 /// Fetch a single KB entry by id.
 pub fn get(conn: &Connection, id: &str) -> AppResult<KbEntry> {
     let mut stmt = conn.prepare("SELECT * FROM kb_entries WHERE id = ?1")?;

@@ -191,6 +191,20 @@ export interface IpcError {
   message: string;
 }
 
+// ── Encrypted sync bundle ─────────────────────────────────────────────────────
+
+// Counts returned after merging an imported sync bundle into the local vault.
+export interface SyncSummary {
+  reports_added: number;
+  reports_updated: number;
+  findings_added: number;
+  findings_updated: number;
+  kb_added: number;
+  kb_updated: number;
+  images_added: number;
+  skipped: number;
+}
+
 // ── AI assistance ─────────────────────────────────────────────────────────────
 
 export type AiProvider = "ollama" | "openai" | "anthropic";

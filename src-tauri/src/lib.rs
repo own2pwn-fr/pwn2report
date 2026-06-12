@@ -13,6 +13,7 @@ mod import;
 mod models;
 mod render;
 mod state;
+mod sync;
 #[cfg(test)]
 mod test_fixtures;
 mod vault;
@@ -82,6 +83,9 @@ pub fn run() {
             commands::ai::ai_set_config,
             commands::ai::ai_test_connection,
             commands::ai::ai_complete,
+            // sync (v4): E2E-encrypted, local-first bundle sync
+            commands::sync::export_sync_bundle,
+            commands::sync::import_sync_bundle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

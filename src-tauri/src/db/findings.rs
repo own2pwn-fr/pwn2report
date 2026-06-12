@@ -133,6 +133,29 @@ fn row_to_finding(row: &Row) -> AppResult<Finding> {
     })
 }
 
+/// Serialize a `Finding`'s columns into the positional params shared by the raw
+/// insert/update statements (sync merge). Returns the JSON-encoded sub-object
+/// strings alongside so they outlive the `params!` borrow.
+struct FindingCols {
+    description: String,
+    remediation: String,
+    evidence: Option<String>,
+    poc: Option<String>,
+    refs: String,
+    tags: String,
+}
+
+fn finding_cols(f: &Finding) -> AppResult<FindingCols> {
+    Ok(FindingCols {
+        description: serde_json::to_string(&f.description)?,
+        remediation: serde_json::to_string(&f.remediation)?,
+        evidence: f.evidence.as_ref().map(serde_json::to_string).transpose()?,
+        poc: f.poc.as_ref().map(serde_json::to_string).transpose()?,
+        refs: serde_json::to_string(&f.refs)?,
+        tags: serde_json::to_string(&f.tags)?,
+    })
+}
+
 // --- queries ----------------------------------------------------------------
 
 /// List a report's findings ordered by `sort_order`.
@@ -147,6 +170,115 @@ pub fn list(conn: &Connection, report_id: &str) -> AppResult<Vec<Finding>> {
         out.push(row_to_finding(row)?);
     }
     Ok(out)
+}
+
+/// Fetch all findings across every report (used by the sync snapshot). Ordered
+/// by id for a deterministic snapshot.
+pub fn list_all(conn: &Connection) -> AppResult<Vec<Finding>> {
+    let mut stmt = conn.prepare("SELECT * FROM findings ORDER BY id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row_to_finding(row)?);
+    }
+    Ok(out)
+}
+
+/// Whether a finding with this id exists.
+pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
+    let found: bool = conn
+        .query_row("SELECT 1 FROM findings WHERE id = ?1", params![id], |_| {
+            Ok(true)
+        })
+        .optional()?
+        .unwrap_or(false);
+    Ok(found)
+}
+
+/// Insert a finding verbatim, preserving its id, sort_order + timestamps (sync
+/// merge — NOT the id-generating [`create`]). Caller must ensure the parent
+/// report exists.
+pub fn insert_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
+    let c = finding_cols(f)?;
+    conn.execute(
+        r#"
+        INSERT INTO findings
+            (id, report_id, sort_order, title, severity, confidence, kind,
+             cwe, cve, cvss_vector, cvss_score, triage_status, triage_note,
+             description, remediation, evidence, poc, refs, tags,
+             created_at, updated_at)
+        VALUES
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+             ?8, ?9, ?10, ?11, ?12, ?13,
+             ?14, ?15, ?16, ?17, ?18, ?19,
+             ?20, ?21)
+        "#,
+        params![
+            f.id,
+            f.report_id,
+            f.sort_order,
+            f.title,
+            f.severity.as_str(),
+            confidence_str(f.confidence),
+            kind_str(f.kind),
+            f.cwe,
+            f.cve,
+            f.cvss_vector,
+            f.cvss_score,
+            triage_str(f.triage_status),
+            f.triage_note,
+            c.description,
+            c.remediation,
+            c.evidence,
+            c.poc,
+            c.refs,
+            c.tags,
+            f.created_at,
+            f.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Overwrite an existing finding verbatim, preserving the incoming timestamps
+/// (sync LWW merge). `report_id` is intentionally NOT updated — a row's parent
+/// report is fixed by its primary key.
+pub fn update_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
+    let c = finding_cols(f)?;
+    conn.execute(
+        r#"
+        UPDATE findings SET
+            sort_order = ?2, title = ?3, severity = ?4, confidence = ?5,
+            kind = ?6, cwe = ?7, cve = ?8, cvss_vector = ?9, cvss_score = ?10,
+            triage_status = ?11, triage_note = ?12, description = ?13,
+            remediation = ?14, evidence = ?15, poc = ?16, refs = ?17,
+            tags = ?18, created_at = ?19, updated_at = ?20
+        WHERE id = ?1
+        "#,
+        params![
+            f.id,
+            f.sort_order,
+            f.title,
+            f.severity.as_str(),
+            confidence_str(f.confidence),
+            kind_str(f.kind),
+            f.cwe,
+            f.cve,
+            f.cvss_vector,
+            f.cvss_score,
+            triage_str(f.triage_status),
+            f.triage_note,
+            c.description,
+            c.remediation,
+            c.evidence,
+            c.poc,
+            c.refs,
+            c.tags,
+            f.created_at,
+            f.updated_at,
+        ],
+    )?;
+    Ok(())
 }
 
 /// Fetch a single finding by id.

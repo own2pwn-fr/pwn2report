@@ -23,6 +23,7 @@ import type {
   ReportPatch,
   ReportSummary,
   ReportType,
+  SyncSummary,
   TemplateInfo,
   VaultStatus,
 } from "./types";
@@ -104,6 +105,16 @@ export const changePassphrase = (oldPassphrase: string, newPassphrase: string) =
   invoke<void>("change_passphrase", { oldPassphrase, newPassphrase });
 
 export const backupVault = (destPath: string) => invoke<void>("backup_vault", { destPath });
+
+// ── Encrypted sync bundle ──────────────────────────────────────────────────────
+
+/** Write an end-to-end encrypted sync bundle, protected by `passphrase`, to `destPath`. */
+export const exportSyncBundle = (passphrase: string, destPath: string) =>
+  invoke<void>("export_sync_bundle", { passphrase, destPath });
+
+/** Decrypt and merge a sync bundle from `srcPath` into the local vault (last edit wins). */
+export const importSyncBundle = (passphrase: string, srcPath: string) =>
+  invoke<SyncSummary>("import_sync_bundle", { passphrase, srcPath });
 
 // ── Templates ──────────────────────────────────────────────────────────────
 

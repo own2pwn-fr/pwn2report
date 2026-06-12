@@ -57,6 +57,12 @@ pub enum AppError {
     /// (usually including the provider name and HTTP status).
     #[error("AI error: {0}")]
     Ai(String),
+
+    /// A sync-bundle failure: encryption/decryption error (e.g. a wrong
+    /// passphrase), a malformed bundle, or an unsupported bundle version. The
+    /// string is a clear, user-facing message.
+    #[error("sync error: {0}")]
+    Sync(String),
 }
 
 impl AppError {
@@ -74,6 +80,7 @@ impl AppError {
             AppError::Serialization(_) => "serialization",
             AppError::Import(_) => "import",
             AppError::Ai(_) => "ai",
+            AppError::Sync(_) => "sync",
         }
     }
 }

@@ -17,10 +17,11 @@ If two people want different reports, that's a template, not a setting.
 
 ## Status
 
-**v1 — usable report writer.** Three report types (web pentest / code audit / red team),
-a full finding editor with an interactive CVSS 3.1/4.0 calculator, multi-format export
-(PDF / DOCX / Markdown / HTML), editable Typst templates, and vault management (passphrase
-rekey + backup). See the roadmap for what comes next.
+**Feature-complete against the roadmap (v0–v4).** Three report types, a full finding editor
+with an interactive CVSS 3.1/4.0 calculator, multi-format export (PDF / DOCX / Markdown /
+HTML), editable Typst templates, a reusable vulnerability knowledge base, scanner importers,
+an evidence pipeline (gallery + annotator/redactor), opt-in pluggable AI assistance, runtime
+EN/FR localization, onboarding, and end-to-end encrypted local-first sync.
 
 ## Features
 
@@ -32,14 +33,22 @@ rekey + backup). See the roadmap for what comes next.
   self-contained HTML.
 - 🧩 **Three report types + editable templates** — web pentest, code audit, red team; edit the
   Typst templates in-app.
+- 📚 **Knowledge base** — reusable finding templates (bundled catalog + your own); add to a
+  report in one click.
+- 📥 **Importers** — SARIF, Nuclei, ZAP, Burp, Nessus and secai/EASM native JSON.
+- 🖼️ **Evidence pipeline** — attach screenshots, annotate, and redact (baked-in), embedded in
+  every export.
+- 🤖 **Opt-in AI assistance** — Ollama (local) or a cloud API; off by default, nothing leaves
+  the machine unless you enable it.
+- 🌍 **EN / FR** UI with runtime switching · first-run onboarding.
+- 🔁 **E2E-encrypted sync** — portable encrypted bundle, conflict-free merge, no server.
 - 🎨 **own2pwn look** — dark/light, violet accent, smooth micro-interactions.
 
-## Roadmap
+## Future enhancements
 
-- **v2** — reusable vulnerability knowledge base · evidence with annotation/redaction/gallery ·
-  importers (Nessus/Burp/ZAP/Nuclei/SARIF) · Markdown rich-text in PDF · pandoc bundled per-OS.
-- **v3** — pluggable AI assistance (local Ollama or cloud, opt-in, off by default) · runtime i18n · onboarding.
-- **v4** — end-to-end encrypted sync (CRDT), local-first preserved.
+- Markdown rich-text inside the PDF (needs a Markdown→Typst conversion).
+- Bundling pandoc as a per-OS sidecar (DOCX currently uses pandoc from `PATH`).
+- A real-time relay / P2P transport for sync (today: portable encrypted bundle).
 
 ## Tech stack
 

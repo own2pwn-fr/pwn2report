@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added — v4 (end-to-end encrypted sync, local-first)
+- Portable **sync bundle** (`.p2r`): an `age` passphrase-encrypted snapshot of the whole vault
+  (reports, findings, KB, evidence images). Move it between devices by any means (USB,
+  Syncthing, Nextcloud, …) — no server, local-first preserved.
+- Conflict-free **LWW merge** keyed by UUID + `updated_at` (a CRDT strategy): reports →
+  findings → KB → images, in one transaction; newer rows win, images are insert-only.
+- Commands `export_sync_bundle` / `import_sync_bundle` (returns a merge summary); Sync section
+  in Settings. (A real-time relay/P2P transport remains a future enhancement.)
+
 ### Added — v3 (pluggable AI, runtime i18n, onboarding)
 - Pluggable AI assistance, **opt-in and OFF by default**: Ollama (local) or a cloud API
   (OpenAI-compatible / Anthropic). Config in `<app_config_dir>/ai.json`; the API key lives in

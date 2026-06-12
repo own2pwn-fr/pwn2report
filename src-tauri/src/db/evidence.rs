@@ -76,6 +76,66 @@ pub fn add(
     get(conn, &id)
 }
 
+/// Fetch every image across all findings as `(metadata, bytes)` tuples (used by
+/// the sync snapshot — evidence bytes travel in the bundle). Ordered by id for a
+/// deterministic snapshot.
+pub fn list_all_with_data(conn: &Connection) -> AppResult<Vec<(EvidenceImage, Vec<u8>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, finding_id, caption, mime, data, sort_order, created_at \
+         FROM evidence_images ORDER BY id",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let meta = row_to_image(row)?;
+        let data: Vec<u8> = row.get("data")?;
+        out.push((meta, data));
+    }
+    Ok(out)
+}
+
+/// Whether an image with this id exists.
+pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
+    let found: bool = conn
+        .query_row(
+            "SELECT 1 FROM evidence_images WHERE id = ?1",
+            params![id],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    Ok(found)
+}
+
+/// Insert an image verbatim, preserving its id, sort_order + created_at (sync
+/// merge — NOT the id-generating [`add`]). Evidence images are immutable, so
+/// there is no `update_raw` counterpart. Caller must ensure the parent finding
+/// exists.
+pub fn insert_raw(
+    conn: &Connection,
+    meta: &EvidenceImage,
+    data: &[u8],
+) -> AppResult<()> {
+    conn.execute(
+        r#"
+        INSERT INTO evidence_images
+            (id, finding_id, caption, mime, data, sort_order, created_at)
+        VALUES
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+        params![
+            meta.id,
+            meta.finding_id,
+            meta.caption,
+            meta.mime,
+            data,
+            meta.sort_order,
+            meta.created_at,
+        ],
+    )?;
+    Ok(())
+}
+
 /// Fetch a single image's metadata by id.
 pub fn get(conn: &Connection, id: &str) -> AppResult<EvidenceImage> {
     let mut stmt = conn.prepare(

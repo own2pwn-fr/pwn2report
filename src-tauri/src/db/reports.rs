@@ -78,6 +78,82 @@ pub fn get(conn: &Connection, id: &str) -> AppResult<Report> {
     report.ok_or(AppError::NotFound)
 }
 
+/// Fetch all reports as full rows (used by the sync snapshot). Ordered by id
+/// for a deterministic snapshot.
+pub fn list_all(conn: &Connection) -> AppResult<Vec<Report>> {
+    let mut stmt = conn.prepare("SELECT * FROM reports ORDER BY id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row_to_report(row)?);
+    }
+    Ok(out)
+}
+
+/// Whether a report with this id exists.
+pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
+    let found: bool = conn
+        .query_row("SELECT 1 FROM reports WHERE id = ?1", params![id], |_| {
+            Ok(true)
+        })
+        .optional()?
+        .unwrap_or(false);
+    Ok(found)
+}
+
+/// Insert a report verbatim, preserving its id + timestamps (sync merge — NOT
+/// the id-generating [`create`]).
+pub fn insert_raw(conn: &Connection, r: &Report) -> AppResult<()> {
+    conn.execute(
+        r#"
+        INSERT INTO reports
+            (id, title, client, report_type, status, exec_summary, scope,
+             methodology, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "#,
+        params![
+            r.id,
+            r.title,
+            r.client,
+            report_type_str(r.report_type),
+            r.status,
+            r.exec_summary,
+            r.scope,
+            r.methodology,
+            r.created_at,
+            r.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Overwrite an existing report verbatim, preserving the incoming timestamps
+/// (sync LWW merge — keeps `created_at` and `updated_at` from the bundle).
+pub fn update_raw(conn: &Connection, r: &Report) -> AppResult<()> {
+    conn.execute(
+        r#"
+        UPDATE reports SET
+            title = ?2, client = ?3, report_type = ?4, status = ?5,
+            exec_summary = ?6, scope = ?7, methodology = ?8,
+            created_at = ?9, updated_at = ?10
+        WHERE id = ?1
+        "#,
+        params![
+            r.id,
+            r.title,
+            r.client,
+            report_type_str(r.report_type),
+            r.status,
+            r.exec_summary,
+            r.scope,
+            r.methodology,
+            r.created_at,
+            r.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
 /// Create a new report and return the persisted row.
 pub fn create(conn: &Connection, input: NewReport) -> AppResult<Report> {
     let id = Uuid::new_v4().to_string();
