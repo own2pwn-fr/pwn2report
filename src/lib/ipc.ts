@@ -7,6 +7,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  EvidenceImage,
   Finding,
   FindingPatch,
   ImportFormat,
@@ -135,6 +136,29 @@ export const kbImportBundled = () => invoke<number>("kb_import_bundled");
 
 export const createFindingFromKb = (reportId: string, kbId: string) =>
   invoke<Finding>("create_finding_from_kb", { reportId, kbId });
+
+// ── Evidence images ──────────────────────────────────────────────────────────
+
+export const addEvidenceImage = (
+  findingId: string,
+  caption: string,
+  mime: string,
+  data: number[],
+) => invoke<EvidenceImage>("add_evidence_image", { findingId, caption, mime, data });
+
+export const listEvidenceImages = (findingId: string) =>
+  invoke<EvidenceImage[]>("list_evidence_images", { findingId });
+
+export const getEvidenceImage = (id: string) => invoke<number[]>("get_evidence_image", { id });
+
+export const updateEvidenceCaption = (id: string, caption: string) =>
+  invoke<EvidenceImage>("update_evidence_caption", { id, caption });
+
+export const deleteEvidenceImage = (id: string) =>
+  invoke<void>("delete_evidence_image", { id });
+
+export const reorderEvidenceImages = (findingId: string, orderedIds: string[]) =>
+  invoke<void>("reorder_evidence_images", { findingId, orderedIds });
 
 // ── Scanner import ───────────────────────────────────────────────────────────
 

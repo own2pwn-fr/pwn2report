@@ -49,6 +49,13 @@ pub fn run() {
             commands::findings::update_finding,
             commands::findings::delete_finding,
             commands::findings::reorder_findings,
+            // evidence images
+            commands::evidence::add_evidence_image,
+            commands::evidence::list_evidence_images,
+            commands::evidence::get_evidence_image,
+            commands::evidence::update_evidence_caption,
+            commands::evidence::delete_evidence_image,
+            commands::evidence::reorder_evidence_images,
             // export
             commands::export::export_pdf,
             commands::export::export_markdown,

@@ -3,22 +3,43 @@
 //! All renderers consume the same `ReportDocument` IR built from the report +
 //! its findings (sorted severity-desc then sort_order by `build_document`).
 
+use std::collections::HashMap;
+
 use tauri::{AppHandle, State};
 
 use super::templates::resolve_template_source;
 use crate::db;
 use crate::error::AppResult;
+use crate::render::content_model::ImageSource;
 use crate::render::{content_model, docx, html, markdown, typst_pdf::PdfRenderer, Renderer};
 use crate::state::AppState;
 
-/// Build the `ReportDocument` IR for a report id (fetch + project).
+/// Build the `ReportDocument` IR for a report id (fetch report + findings +
+/// each finding's evidence images, then project). Image bytes are read from the
+/// encrypted vault here so the renderers stay pure.
 fn build_doc(state: &AppState, report_id: &str) -> AppResult<content_model::ReportDocument> {
-    let (report, findings) = state.with_conn(|conn| {
+    let (report, findings, images) = state.with_conn(|conn| {
         let report = db::reports::get(conn, report_id)?;
         let findings = db::findings::list(conn, report_id)?;
-        Ok((report, findings))
+
+        // For each finding, fetch its ordered images and their raw bytes.
+        let mut images: HashMap<String, Vec<ImageSource>> = HashMap::new();
+        for f in &findings {
+            let metas = db::evidence::list(conn, &f.id)?;
+            if metas.is_empty() {
+                continue;
+            }
+            let mut sources = Vec::with_capacity(metas.len());
+            for m in metas {
+                let (mime, data) = db::evidence::get_data(conn, &m.id)?;
+                sources.push((m.caption, mime, data));
+            }
+            images.insert(f.id.clone(), sources);
+        }
+
+        Ok((report, findings, images))
     })?;
-    Ok(content_model::build_document(&report, findings))
+    Ok(content_model::build_document(&report, findings, &images))
 }
 
 /// Render a report (with its findings) to PDF bytes. Uses the custom Typst

@@ -36,4 +36,5 @@ typst-pdf = "0.14"
 derive_typst_intoval = "0.6.0"
 time = "=0.3.47"
 roxmltree = "0.21.1"
+base64 = "0.22.1"
 

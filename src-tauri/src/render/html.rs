@@ -6,6 +6,8 @@
 //! font-family stacks, per-severity color chips. All user-supplied content is
 //! HTML-escaped before insertion.
 
+use base64::Engine as _;
+
 use super::content_model::{FindingInput, ReportDocument};
 
 /// Escape the five significant HTML characters in user content.
@@ -96,6 +98,20 @@ code {
 .loc { color: #9b9ba3; }
 ol, ul { margin: 0.25rem 0 1rem; padding-left: 1.4rem; }
 .empty { color: #9b9ba3; font-style: italic; }
+figure.evidence-img { margin: 0.75rem 0; }
+figure.evidence-img img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #26262c;
+  border-radius: 6px;
+  display: block;
+}
+figure.evidence-img figcaption {
+  color: #9b9ba3;
+  font-size: 0.85rem;
+  font-style: italic;
+  margin-top: 0.35rem;
+}
 "#;
 
 /// Render the full report to a self-contained HTML document string.
@@ -259,6 +275,25 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
         code_block(out, &f.poc_payload);
     }
 
+    // Evidence images (inlined as base64 data-URIs so the doc is self-contained).
+    if !f.images.is_empty() {
+        out.push_str("<div class=\"facet-label\">Screenshots</div>\n");
+        for img in &f.images {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(img.data.as_slice());
+            out.push_str("<figure class=\"evidence-img\">\n");
+            out.push_str(&format!(
+                "<img src=\"data:{};base64,{}\" alt=\"{}\">\n",
+                esc(&img.mime),
+                b64,
+                esc(&img.caption)
+            ));
+            if !img.caption.is_empty() {
+                out.push_str(&format!("<figcaption>{}</figcaption>\n", esc(&img.caption)));
+            }
+            out.push_str("</figure>\n");
+        }
+    }
+
     // Remediation.
     if !f.fix.is_empty() || !f.code_patch.is_empty() || !f.remediation_refs.is_empty() {
         if !f.fix.is_empty() {
@@ -308,6 +343,8 @@ fn code_block(out: &mut String, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::render::content_model::build_document;
     use crate::test_fixtures::{sample_finding, sample_report};
@@ -316,7 +353,7 @@ mod tests {
     fn html_is_self_contained_and_escapes_user_content() {
         let mut finding = sample_finding();
         finding.title = "XSS <script>alert(1)</script>".to_string();
-        let doc = build_document(&sample_report(), vec![finding]);
+        let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
         let html = to_html(&doc);
 
         assert!(html.starts_with("<!DOCTYPE html>"));
@@ -334,5 +371,32 @@ mod tests {
     #[test]
     fn esc_handles_all_significant_chars() {
         assert_eq!(esc("a&b<c>d\"e'f"), "a&amp;b&lt;c&gt;d&quot;e&#39;f");
+    }
+
+    /// A 1x1 transparent PNG (decoded from base64) used to exercise embedding.
+    fn one_px_png() -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn html_embeds_evidence_images_as_data_uri() {
+        let png = one_px_png();
+        let mut images = HashMap::new();
+        images.insert(
+            "f1".to_string(),
+            vec![("Login bypass".to_string(), "image/png".to_string(), png)],
+        );
+        let doc = build_document(&sample_report(), vec![sample_finding()], &images);
+        let html = to_html(&doc);
+
+        assert!(html.contains("<img src=\"data:image/png;base64,iVBOR"));
+        // Caption surfaces as both alt and figcaption.
+        assert!(html.contains("<figcaption>Login bypass</figcaption>"));
+        // Still self-contained (no external image refs).
+        assert!(!html.contains("src=\"http"));
     }
 }

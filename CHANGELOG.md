@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added — v2 round 2 (evidence-image pipeline)
+- Per-finding evidence images stored in the SQLCipher-encrypted vault
+  (`evidence_images` table, bytes as a BLOB → encrypted at rest). Schema migration to v3
+  (idempotent, `PRAGMA user_version`).
+- New commands: `add_evidence_image`, `list_evidence_images`, `get_evidence_image`,
+  `update_evidence_caption`, `delete_evidence_image`, `reorder_evidence_images`.
+- Images are embedded in every export format: PDF (Typst `image()` figures via a new
+  `finding-images` helper in `lib/common.typ`, used by all three themes), HTML and Markdown
+  (inline base64 `data:` URIs, self-contained), and DOCX (images written to a temp dir and
+  referenced by relative path so pandoc embeds them via `--resource-path`).
+
 ### Added — v2 (knowledge base & scanner importers)
 - Vulnerability knowledge base: reusable finding templates stored in the encrypted vault
   (`kb_entries`), a bundled catalog of 13 common web/app vulnerabilities, full CRUD, an

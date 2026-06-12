@@ -171,6 +171,23 @@
   }
 }
 
+// Evidence images for a finding. Each image is its raw bytes (PNG/JPG/…) from
+// the render IR (`f.images`), rendered as a captioned figure. No-ops when the
+// finding has no images. Width is capped so large screenshots stay on the page.
+#let finding-images(f) = {
+  if "images" in f and f.images.len() > 0 {
+    block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Screenshots"))
+    for img in f.images {
+      block(spacing: 8pt, {
+        figure(
+          image(img.data, width: 85%),
+          caption: if img.caption != "" { img.caption } else { none },
+        )
+      })
+    }
+  }
+}
+
 // A horizontal separator between findings (skips the last).
 #let finding-separator(i, total) = {
   if i + 1 < total {

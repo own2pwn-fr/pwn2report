@@ -9,10 +9,33 @@
 //! all types); the per-type emphasis lives in the Typst themes. The renderer
 //! still leans on the IR's `report_type` label for the document header.
 
+use base64::Engine as _;
+
 use super::content_model::{FindingInput, ReportDocument};
 
-/// Render the full report to a GitHub-flavored Markdown string.
+/// How a finding's evidence images are emitted into the Markdown.
+///
+/// The default `to_markdown` inlines them as self-contained base64 data-URIs.
+/// The DOCX path needs real file references instead (pandoc does not embed
+/// data-URI images reliably), so it supplies its own strategy via
+/// [`to_markdown_with`].
+pub enum ImageMode<'a> {
+    /// Inline every image as a `data:<mime>;base64,...` URI.
+    DataUri,
+    /// Use a caller-provided `(finding_index, image_index) -> relative path`
+    /// resolver (e.g. files written to a temp dir for pandoc's resource path).
+    Paths(&'a dyn Fn(usize, usize) -> String),
+}
+
+/// Render the full report to a GitHub-flavored Markdown string with images
+/// inlined as base64 data-URIs (self-contained `.md`).
 pub fn to_markdown(doc: &ReportDocument) -> String {
+    to_markdown_with(doc, &ImageMode::DataUri)
+}
+
+/// Render the full report to GFM, choosing how evidence images are referenced.
+/// See [`ImageMode`]. The DOCX renderer uses [`ImageMode::Paths`].
+pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String {
     let mut out = String::new();
 
     // Title + metadata.
@@ -66,7 +89,7 @@ pub fn to_markdown(doc: &ReportDocument) -> String {
     if !doc.findings.is_empty() {
         out.push_str("## Detailed Findings\n\n");
         for (i, f) in doc.findings.iter().enumerate() {
-            push_finding(&mut out, i + 1, f);
+            push_finding(&mut out, i, f, image_mode);
         }
     } else {
         out.push_str("_No findings recorded for this report._\n");
@@ -75,11 +98,12 @@ pub fn to_markdown(doc: &ReportDocument) -> String {
     out
 }
 
-/// Append a single finding section.
-fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
+/// Append a single finding section. `idx` is the 0-based finding index (used
+/// both for the displayed number and to resolve image paths in DOCX mode).
+fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &ImageMode) {
     out.push_str(&format!(
         "### {}. {} `{}`\n\n",
-        n,
+        idx + 1,
         f.title,
         f.severity.to_uppercase()
     ));
@@ -148,6 +172,28 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
         code_block(out, &f.poc_payload);
     }
 
+    // Evidence images. In `DataUri` mode the `.md` is self-contained; in
+    // `Paths` mode each image is referenced by a relative file path (pandoc's
+    // `--resource-path` resolves it for DOCX embedding).
+    if !f.images.is_empty() {
+        out.push_str("**Screenshots**\n\n");
+        for (j, img) in f.images.iter().enumerate() {
+            let src = match image_mode {
+                ImageMode::DataUri => format!(
+                    "data:{};base64,{}",
+                    img.mime,
+                    base64::engine::general_purpose::STANDARD.encode(img.data.as_slice())
+                ),
+                ImageMode::Paths(resolve) => resolve(idx, j),
+            };
+            // Alt text doubles as the visible caption line below the image.
+            out.push_str(&format!("![{}]({})\n\n", md_alt(&img.caption), src));
+            if !img.caption.is_empty() {
+                out.push_str(&format!("_{}_\n\n", img.caption));
+            }
+        }
+    }
+
     // Remediation.
     if !f.fix.is_empty() || !f.code_patch.is_empty() || !f.remediation_refs.is_empty() {
         facet(out, "Remediation", &f.fix);
@@ -166,6 +212,12 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
     }
 
     out.push_str("---\n\n");
+}
+
+/// Sanitize a caption for use as Markdown image alt text (strip the bracket
+/// that would terminate the alt span and collapse newlines).
+fn md_alt(caption: &str) -> String {
+    caption.replace(['[', ']'], "").replace('\n', " ")
 }
 
 /// Emit a bold-labelled paragraph only when the body is non-empty.
@@ -189,13 +241,15 @@ fn code_block(out: &mut String, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::render::content_model::build_document;
     use crate::test_fixtures::{sample_finding, sample_report};
 
     #[test]
     fn markdown_includes_title_summary_table_and_findings() {
-        let doc = build_document(&sample_report(), vec![sample_finding()]);
+        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
         let md = to_markdown(&doc);
         assert!(md.starts_with("# Test Report"));
         assert!(md.contains("| Severity | Count |"));
@@ -211,7 +265,7 @@ mod tests {
         let mut report = sample_report();
         report.scope = String::new();
         report.methodology = String::new();
-        let doc = build_document(&report, vec![]);
+        let doc = build_document(&report, vec![], &HashMap::new());
         let md = to_markdown(&doc);
         assert!(!md.contains("## Scope"));
         assert!(!md.contains("## Methodology"));

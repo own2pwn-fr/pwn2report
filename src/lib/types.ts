@@ -171,6 +171,17 @@ export type NewKbEntry = Omit<KbEntry, "id" | "created_at" | "updated_at">;
 
 export type KbPatch = Partial<NewKbEntry>;
 
+// ── Evidence images ──────────────────────────────────────────────────────────
+
+export interface EvidenceImage {
+  id: string;
+  finding_id: string;
+  caption: string;
+  mime: string;
+  sort_order: number;
+  created_at: string;
+}
+
 // Supported scanner import formats for `import_findings`.
 export type ImportFormat = "sarif" | "nuclei" | "zap" | "burp" | "nessus" | "secai";
 

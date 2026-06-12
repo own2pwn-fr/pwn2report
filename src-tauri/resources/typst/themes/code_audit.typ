@@ -16,7 +16,7 @@
 // Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
-#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator
+#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
 
 #let doc = inputs
 
@@ -125,6 +125,9 @@
       }
       code-block(f.poc_payload)
     }
+
+    // Evidence images (screenshots / diagrams).
+    finding-images(f)
 
     // Remediation — the fix description plus the suggested code patch.
     if f.fix != "" or f.code_patch != "" or f.remediation_refs.len() > 0 {

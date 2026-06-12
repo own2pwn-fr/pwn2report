@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CvssCalculator } from "@/components/cvss-calculator";
+import { EvidenceGallery } from "@/components/evidence/evidence-gallery";
 import type {
   Confidence,
   Evidence,
@@ -539,6 +540,15 @@ export function FindingForm({
                 className="font-mono text-xs"
               />
             </div>
+          </Section>
+
+          {/* ── Evidence images ───────────────────────────────────────────── */}
+          <Section title={t("evidence.section")}>
+            {finding ? (
+              <EvidenceGallery findingId={finding.id} />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("evidence.saveFirst")}</p>
+            )}
           </Section>
 
           {/* ── Proof of concept ──────────────────────────────────────────── */}

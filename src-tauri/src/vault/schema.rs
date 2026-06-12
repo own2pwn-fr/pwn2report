@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Current schema version. Bump when adding migrations.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// Create all tables/indexes if absent and stamp the schema version. Safe to
 /// call on every unlock (uses `IF NOT EXISTS`).
@@ -89,6 +89,27 @@ pub fn init(conn: &Connection) -> AppResult<()> {
 
         CREATE INDEX IF NOT EXISTS idx_kb_entries_title
             ON kb_entries(title);
+        "#,
+    )?;
+
+    // v3: per-finding evidence images. Bytes are stored inline in the
+    // SQLCipher-encrypted DB (encrypted at rest); `ON DELETE CASCADE` keeps
+    // them in lockstep with their parent finding. `IF NOT EXISTS` keeps this a
+    // no-op on an already-migrated DB and the initial create on v2 upgrades.
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS evidence_images (
+            id          TEXT PRIMARY KEY,
+            finding_id  TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+            caption     TEXT NOT NULL DEFAULT '',
+            mime        TEXT NOT NULL,
+            data        BLOB NOT NULL,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_evidence_images_finding
+            ON evidence_images(finding_id, sort_order);
         "#,
     )?;
 

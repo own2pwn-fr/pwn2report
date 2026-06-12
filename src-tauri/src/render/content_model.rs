@@ -7,12 +7,19 @@
 //! optional fields. Each type derives `IntoValue`/`IntoDict` from
 //! `derive_typst_intoval` and `Vec<_>` of nested types is supported directly.
 
+use std::collections::HashMap;
+
 use derive_typst_intoval::{IntoDict, IntoValue};
 // The trait (same name as the derive macro, different namespace) must be in
 // scope: the derived `into_dict`/`into_value` call `field.into_value()`.
-use typst::foundations::{Dict, IntoValue as _};
+use typst::foundations::{Bytes, Dict, IntoValue as _};
 
 use crate::models::{Finding, Report, ReportType, Severity};
+
+/// One image source for a finding, as passed into [`build_document`]:
+/// `(caption, mime, raw bytes)`. Kept as a plain tuple-friendly type so the
+/// command/export layer can build the map without depending on Typst types.
+pub type ImageSource = (String, String, Vec<u8>);
 
 /// Top-level template input.
 #[derive(Debug, Clone, IntoValue, IntoDict)]
@@ -90,9 +97,24 @@ pub struct FindingInput {
     pub poc_scenario: String,
     pub poc_steps: Vec<String>,
     pub poc_payload: String,
+    // evidence images (screenshots / diagrams)
+    pub images: Vec<FindingImage>,
     // misc
     pub refs: Vec<String>,
     pub tags: Vec<String>,
+}
+
+/// A single evidence image, flattened for the renderers.
+///
+/// `data` is `typst::foundations::Bytes` so the Typst path can feed it straight
+/// to `image(..)` (its `IntoValue` impl makes the derive macro inject it into
+/// the template dict as raw bytes). The HTML / Markdown renderers read the same
+/// bytes via `data.as_slice()` and base64-encode them into data-URIs.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct FindingImage {
+    pub caption: String,
+    pub mime: String,
+    pub data: Bytes,
 }
 
 fn report_type_label(t: ReportType) -> &'static str {
@@ -104,8 +126,10 @@ fn report_type_label(t: ReportType) -> &'static str {
 }
 
 impl FindingInput {
-    /// Project a DB `Finding` into the template-friendly shape.
-    fn from_finding(f: &Finding) -> Self {
+    /// Project a DB `Finding` (plus its evidence images) into the
+    /// template-friendly shape. `images` is the `(caption, mime, bytes)` list
+    /// for this finding, already ordered; an empty slice yields no images.
+    fn from_finding(f: &Finding, images: &[ImageSource]) -> Self {
         let evidence = f.evidence.as_ref();
         let evidence_lines = evidence
             .map(|e| match (e.start_line, e.end_line) {
@@ -152,18 +176,35 @@ impl FindingInput {
             poc_payload: poc
                 .and_then(|p| p.payload.clone())
                 .unwrap_or_default(),
+            images: images
+                .iter()
+                .map(|(caption, mime, data)| FindingImage {
+                    caption: caption.clone(),
+                    mime: mime.clone(),
+                    data: Bytes::new(data.clone()),
+                })
+                .collect(),
             refs: f.refs.clone(),
             tags: f.tags.clone(),
         }
     }
 }
 
-/// Build the full `ReportDocument` IR from a report + its findings.
+/// Build the full `ReportDocument` IR from a report + its findings + their
+/// evidence images.
 ///
 /// Findings are sorted by severity (critical first) then `sort_order` so the
 /// PDF leads with the most important issues. `date` is the report's
 /// `updated_at` truncated to the date portion (falls back to the full string).
-pub fn build_document(report: &Report, mut findings: Vec<Finding>) -> ReportDocument {
+///
+/// `images` maps a finding id to its ordered `(caption, mime, bytes)` list;
+/// findings absent from the map render with no images. This function stays pure
+/// (no DB) — the command/export layer fetches the bytes and builds the map.
+pub fn build_document(
+    report: &Report,
+    mut findings: Vec<Finding>,
+    images: &HashMap<String, Vec<ImageSource>>,
+) -> ReportDocument {
     findings.sort_by(|a, b| {
         b.severity
             .rank()
@@ -201,6 +242,12 @@ pub fn build_document(report: &Report, mut findings: Vec<Finding>) -> ReportDocu
         scope: report.scope.clone(),
         methodology: report.methodology.clone(),
         summary,
-        findings: findings.iter().map(FindingInput::from_finding).collect(),
+        findings: findings
+            .iter()
+            .map(|f| {
+                let imgs = images.get(&f.id).map(Vec::as_slice).unwrap_or(&[]);
+                FindingInput::from_finding(f, imgs)
+            })
+            .collect(),
     }
 }

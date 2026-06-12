@@ -186,6 +186,47 @@
     "fieldTags": "Tags",
     "fieldTagPlaceholder": "e.g. authentication"
   },
+  "evidence": {
+    "section": "Evidence images",
+    "saveFirst": "Save the finding first, then you can attach evidence images here.",
+    "empty": "No images yet. Add a screenshot to illustrate this finding.",
+    "add": "Add image",
+    "adding": "Adding…",
+    "addError": "Could not add the image.",
+    "loadError": "Could not load the image.",
+    "loading": "Loading…",
+    "caption": "Caption",
+    "captionPlaceholder": "Describe what this screenshot shows…",
+    "captionSaved": "Caption updated.",
+    "captionError": "Could not update the caption.",
+    "deleteConfirm": "Delete this image? This cannot be undone.",
+    "deleteError": "Could not delete the image.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "annotate": "Annotate",
+    "annotatedSuffix": " (annotated)",
+    "paste": "Paste image",
+    "pasteHint": "Tip: copy an image and press Ctrl+V to paste it here.",
+    "pasteEmpty": "No image found in the clipboard.",
+    "pasteError": "Could not paste the image."
+  },
+  "annotator": {
+    "title": "Annotate image",
+    "tool": "Tool",
+    "tools": {
+      "redact": "Redact",
+      "box": "Box",
+      "arrow": "Arrow",
+      "pen": "Pen"
+    },
+    "color": "Color",
+    "undo": "Undo",
+    "clear": "Clear",
+    "save": "Save as new image",
+    "saving": "Saving…",
+    "saveError": "Could not save the annotated image.",
+    "redactHint": "Redaction is permanently baked into the saved pixels."
+  },
   "kb": {
     "title": "Knowledge base",
     "subtitle": "A reusable catalog of vulnerabilities to drop into any report.",
