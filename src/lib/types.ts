@@ -101,8 +101,20 @@ export interface NewFinding {
   cve?: string | null;
   cvss_vector?: string | null;
   cvss_score?: number | null;
+  triage_status?: TriageStatus;
+  triage_note?: string | null;
   description?: Partial<FindingDescription>;
   remediation?: Partial<FindingRemediation>;
+  evidence?: Evidence | null;
+  poc?: StructuredPoc | null;
+  refs?: string[];
+  tags?: string[];
+}
+
+/** Template metadata returned by `list_templates`. */
+export interface TemplateInfo {
+  report_type: ReportType;
+  is_custom: boolean;
 }
 
 // Partial patch payloads for update commands. Backend treats omitted fields

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { FileText, Plus, Trash2, Lock } from "lucide-react";
+import { FileText, Plus, Trash2, Lock, Settings as SettingsIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -161,6 +161,15 @@ export function ReportsList() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
+            title={t("settings.title")}
+            aria-label={t("settings.title")}
+            onClick={() => navigate("/settings")}
+          >
+            <SettingsIcon />
+          </Button>
           <Button
             variant="ghost"
             size="icon"

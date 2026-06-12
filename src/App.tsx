@@ -5,6 +5,7 @@ import { useVaultStatus } from "@/lib/queries/use-vault";
 import { VaultGate } from "@/app/routes/vault-gate";
 import { ReportsList } from "@/app/routes/reports-list";
 import { ReportDetail } from "@/app/routes/report-detail";
+import { Settings } from "@/app/routes/settings";
 
 function GatedRoutes() {
   const location = useLocation();
@@ -31,6 +32,7 @@ function GatedRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/vault" element={<Navigate to="/" replace />} />
         <Route path="/" element={<ReportsList />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/reports/:id" element={<ReportDetail />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

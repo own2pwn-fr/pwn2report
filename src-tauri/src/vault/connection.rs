@@ -42,6 +42,26 @@ pub fn create_encrypted(path: &Path, passphrase: &str) -> AppResult<Connection> 
     Ok(conn)
 }
 
+/// Verify a passphrase against an existing vault WITHOUT mutating it.
+///
+/// Opens a throwaway connection, keys it, and reads the canary. Unlike
+/// [`open_encrypted`] this performs no schema write, so it is safe to call
+/// while the live connection is open (e.g. to re-verify the old passphrase
+/// before a rekey). Returns `WrongPassphrase` on a bad key.
+pub fn verify_passphrase(path: &Path, passphrase: &str) -> AppResult<()> {
+    let conn = Connection::open(path)?;
+    key_connection(&conn, passphrase)?;
+    let canary: Result<String, rusqlite::Error> = conn.query_row(
+        "SELECT value FROM meta WHERE key = ?1",
+        rusqlite::params![CANARY_KEY],
+        |row| row.get(0),
+    );
+    match canary {
+        Ok(v) if v == CANARY_VALUE => Ok(()),
+        _ => Err(AppError::WrongPassphrase),
+    }
+}
+
 /// Open an existing encrypted vault and validate the passphrase via the canary.
 ///
 /// On a wrong key, reading `meta` errors ("file is not a database" / HMAC

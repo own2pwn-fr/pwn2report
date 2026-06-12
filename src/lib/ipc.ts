@@ -15,6 +15,8 @@ import type {
   Report,
   ReportPatch,
   ReportSummary,
+  ReportType,
+  TemplateInfo,
   VaultStatus,
 } from "./types";
 
@@ -81,3 +83,30 @@ export const reorderFindings = (reportId: string, orderedIds: string[]) =>
 // ── Export ─────────────────────────────────────────────────────────────────
 
 export const exportPdf = (reportId: string) => invoke<number[]>("export_pdf", { reportId });
+
+export const exportDocx = (reportId: string) => invoke<number[]>("export_docx", { reportId });
+
+export const exportMarkdown = (reportId: string) =>
+  invoke<string>("export_markdown", { reportId });
+
+export const exportHtml = (reportId: string) => invoke<string>("export_html", { reportId });
+
+// ── Security ───────────────────────────────────────────────────────────────
+
+export const changePassphrase = (oldPassphrase: string, newPassphrase: string) =>
+  invoke<void>("change_passphrase", { oldPassphrase, newPassphrase });
+
+export const backupVault = (destPath: string) => invoke<void>("backup_vault", { destPath });
+
+// ── Templates ──────────────────────────────────────────────────────────────
+
+export const listTemplates = () => invoke<TemplateInfo[]>("list_templates");
+
+export const getTemplate = (reportType: ReportType) =>
+  invoke<string>("get_template", { reportType });
+
+export const saveTemplate = (reportType: ReportType, content: string) =>
+  invoke<void>("save_template", { reportType, content });
+
+export const resetTemplate = (reportType: ReportType) =>
+  invoke<void>("reset_template", { reportType });

@@ -84,9 +84,16 @@
     "methodology": "Methodology",
     "methodologyPlaceholder": "Approach, standards and tooling used…",
     "exportPdf": "Export PDF",
+    "export": "Export",
+    "exportAs": "Export as",
     "exporting": "Exporting…",
+    "formatPdf": "PDF",
+    "formatDocx": "Word (DOCX)",
+    "formatMarkdown": "Markdown",
+    "formatHtml": "HTML",
     "exportSuccess": "PDF exported successfully.",
-    "exportError": "Could not export the PDF.",
+    "exportSuccessFormat": "{{format}} exported successfully.",
+    "exportError": "Could not export the report.",
     "exportCancelled": "Export cancelled.",
     "notFound": "Report not found.",
     "details": "Report details"
@@ -103,10 +110,24 @@
     },
     "deleteConfirm": "Delete this finding? This cannot be undone.",
     "createError": "Could not create the finding.",
+    "addRow": "Add",
+    "section": {
+      "classification": "Classification",
+      "cvss": "CVSS score",
+      "description": "Description",
+      "evidence": "Evidence",
+      "poc": "Proof of concept",
+      "remediation": "Remediation",
+      "metadata": "References & tags"
+    },
     "fieldTitle": "Title",
     "fieldTitlePlaceholder": "e.g. SQL injection in login form",
     "fieldSeverity": "Severity",
     "fieldConfidence": "Confidence",
+    "fieldKind": "Kind",
+    "fieldTriageStatus": "Triage status",
+    "fieldTriageNote": "Triage note",
+    "fieldTriageNotePlaceholder": "Why this status was chosen…",
     "fieldCwe": "CWE",
     "fieldCwePlaceholder": "e.g. CWE-89",
     "fieldCve": "CVE",
@@ -124,7 +145,33 @@
     "fieldTechnicalDetails": "Technical details",
     "fieldTechnicalDetailsPlaceholder": "Deep technical write-up…",
     "fieldFix": "Remediation",
-    "fieldFixPlaceholder": "How to fix it…"
+    "fieldFixPlaceholder": "How to fix it…",
+    "fieldCodePatch": "Code patch",
+    "fieldCodePatchPlaceholder": "A diff or corrected snippet…",
+    "fieldRemediationRefs": "Remediation references",
+    "fieldEvidenceFile": "File",
+    "fieldEvidenceFilePlaceholder": "src/auth/login.py",
+    "fieldEvidenceStartLine": "Start line",
+    "fieldEvidenceEndLine": "End line",
+    "fieldEvidenceSnippet": "Snippet",
+    "fieldEvidenceSnippetPlaceholder": "Relevant code excerpt…",
+    "fieldPocScenario": "Scenario",
+    "fieldPocScenarioPlaceholder": "Context and preconditions for the exploit…",
+    "fieldPocSteps": "Exploitation steps",
+    "fieldPocStepsPlaceholder": "e.g. Send the crafted request to /login",
+    "fieldPocPayload": "Payload",
+    "fieldPocPayloadPlaceholder": "The raw payload used…",
+    "fieldRefs": "References",
+    "fieldRefPlaceholder": "https://…",
+    "fieldTags": "Tags",
+    "fieldTagPlaceholder": "e.g. authentication"
+  },
+  "kind": {
+    "manual": "Manual",
+    "sast": "SAST",
+    "iac": "IaC",
+    "sca": "SCA",
+    "secret": "Secret"
   },
   "severity": {
     "info": "Info",
@@ -145,6 +192,50 @@
     "resolved": "Resolved"
   },
   "cvss": {
-    "score": "Score {{score}}"
+    "score": "Score {{score}}",
+    "version": "CVSS {{version}}",
+    "rating": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low",
+      "NONE": "None"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your vault and report templates.",
+    "security": {
+      "title": "Security",
+      "subtitle": "Change your master passphrase or back up your vault.",
+      "current": "Current passphrase",
+      "new": "New passphrase",
+      "confirm": "Confirm new passphrase",
+      "changeCta": "Change passphrase",
+      "changeSuccess": "Passphrase changed.",
+      "changeError": "Could not change the passphrase.",
+      "backupTitle": "Back up vault",
+      "backupHint": "Save an encrypted copy of your vault to another location.",
+      "backupCta": "Back up vault",
+      "backingUp": "Backing up…",
+      "backupSuccess": "Vault backed up.",
+      "backupError": "Could not back up the vault.",
+      "vaultFile": "Vault database"
+    },
+    "templates": {
+      "title": "Templates",
+      "subtitle": "Customize the Typst source used to render each report type.",
+      "reportType": "Report type",
+      "source": "Template source (.typ)",
+      "custom": "Custom",
+      "default": "Default",
+      "empty": "No templates available.",
+      "resetCta": "Reset to default",
+      "resetConfirm": "Reset this template to its built-in default? Your changes will be lost.",
+      "saveSuccess": "Template saved.",
+      "saveError": "Could not save the template.",
+      "resetSuccess": "Template reset to default.",
+      "resetError": "Could not reset the template."
+    }
   }
 }

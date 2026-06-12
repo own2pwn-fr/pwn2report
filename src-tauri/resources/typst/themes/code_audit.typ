@@ -1,22 +1,19 @@
-// pwn2report — professional A4 web-penetration-test report theme.
+// pwn2report — A4 code-audit report theme.
 //
-// Reads its data from `#import sys: inputs` (populated by the Rust render IR
-// in render/content_model.rs). Layout:
-//   1. title page (title, client, report type, date)
-//   2. executive summary + severity-count table
-//   3. scope + methodology
-//   4. one section per finding (severity badge, CVSS, description facets,
-//      evidence, PoC, remediation)
+// Reads its data from `#import sys: inputs` (populated by the Rust render IR in
+// render/content_model.rs). Shares the title page / severity-summary table /
+// header-footer with the other themes (via lib/common.typ), but per finding it
+// emphasises the SOURCE: file/line location first, the evidence code snippet in
+// a JetBrains Mono block, the CWE, and the remediation code patch as a code
+// block.
 //
-// CUSTOM TEMPLATES: this file is the bundled default for the `web_pentest`
-// report type. A user override lives at
-// `<app_config_dir>/templates/web_pentest.typ`. A custom template MUST import
-// the shared lib at the stable path below — do NOT change it:
+// CUSTOM TEMPLATES: bundled default for the `code_audit` report type. A user
+// override lives at `<app_config_dir>/templates/code_audit.typ`. A custom
+// template MUST import the shared lib at the stable path below — do NOT change
+// it (it is registered in-memory by the renderer under exactly this path):
 //   #import "lib/common.typ": ...
-// (it is registered in-memory by the renderer under exactly that virtual path).
 //
-// Robust to missing optional fields: the IR flattens them to "" / empty
-// arrays, and the helpers below no-op on empties.
+// Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
 #import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator
@@ -36,6 +33,21 @@
 #set par(justify: true, leading: 0.62em)
 #show heading: set text(fill: accent)
 #set heading(numbering: none)
+
+// A prominent location banner ("file:lines"), monospace.
+#let location-banner(f) = {
+  let loc = evidence-loc(f)
+  if loc != "" {
+    block(
+      width: 100%,
+      fill: rgb("#f3f0ff"),
+      stroke: 0.5pt + accent,
+      inset: 6pt,
+      radius: 4pt,
+      text(font: "JetBrains Mono", size: 9pt, fill: accent, weight: "bold", loc),
+    )
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Title page
@@ -73,7 +85,7 @@
 }
 
 // ---------------------------------------------------------------------------
-// Findings
+// Findings — source-centric layout
 // ---------------------------------------------------------------------------
 #if doc.findings.len() > 0 {
   pagebreak()
@@ -81,26 +93,30 @@
 
   for (i, f) in doc.findings.enumerate() {
     finding-heading(i + 1, f)
+
+    // Location banner first — code audits lead with where the issue lives.
+    location-banner(f)
+
+    // CWE called out explicitly (in addition to the meta line).
+    if f.cwe != "" {
+      block(spacing: 6pt, text(size: 9pt, weight: "semibold", fill: accent, "Weakness: " + f.cwe))
+    }
     finding-meta(f)
 
-    // Description facets.
-    facet("Summary", f.summary)
-    facet("Root cause", f.root_cause)
-    facet("Attack vector", f.attack_vector)
-    facet("Business impact", f.business_impact)
-    facet("Technical details", f.technical_details)
-
-    // Evidence.
-    if f.has_evidence {
-      let loc = evidence-loc(f)
-      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Evidence"))
-      if loc != "" {
-        block(spacing: 4pt, text(size: 8.5pt, fill: luma(120), font: "JetBrains Mono", loc))
-      }
+    // The vulnerable code snippet, prominent.
+    if f.evidence_snippet != "" {
+      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Vulnerable code"))
       code-block(f.evidence_snippet)
     }
 
-    // Proof of Concept.
+    // Description facets — technical first for an audit audience.
+    facet("Summary", f.summary)
+    facet("Root cause", f.root_cause)
+    facet("Technical details", f.technical_details)
+    facet("Attack vector", f.attack_vector)
+    facet("Business impact", f.business_impact)
+
+    // Proof of Concept (optional, secondary in an audit).
     if f.has_poc {
       block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Proof of Concept"))
       if f.poc_scenario != "" { block(spacing: 6pt, f.poc_scenario) }
@@ -110,10 +126,13 @@
       code-block(f.poc_payload)
     }
 
-    // Remediation.
+    // Remediation — the fix description plus the suggested code patch.
     if f.fix != "" or f.code_patch != "" or f.remediation_refs.len() > 0 {
       facet("Remediation", f.fix)
-      code-block(f.code_patch)
+      if f.code_patch != "" {
+        block(spacing: 6pt, text(size: 9pt, weight: "semibold", fill: accent, "Suggested patch"))
+        code-block(f.code_patch)
+      }
       references-block(f.remediation_refs)
     }
 

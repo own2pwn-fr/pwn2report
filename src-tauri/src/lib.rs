@@ -11,6 +11,8 @@ mod error;
 mod models;
 mod render;
 mod state;
+#[cfg(test)]
+mod test_fixtures;
 mod vault;
 
 use state::AppState;
@@ -32,6 +34,8 @@ pub fn run() {
             commands::vault::unlock_with_keychain,
             commands::vault::lock_vault,
             commands::vault::forget_keychain,
+            commands::vault::change_passphrase,
+            commands::vault::backup_vault,
             // reports
             commands::reports::list_reports,
             commands::reports::create_report,
@@ -46,6 +50,14 @@ pub fn run() {
             commands::findings::reorder_findings,
             // export
             commands::export::export_pdf,
+            commands::export::export_markdown,
+            commands::export::export_html,
+            commands::export::export_docx,
+            // templates
+            commands::templates::list_templates,
+            commands::templates::get_template,
+            commands::templates::save_template,
+            commands::templates::reset_template,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

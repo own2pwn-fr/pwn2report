@@ -11,6 +11,37 @@ pub enum ReportType {
     RedTeam,
 }
 
+impl ReportType {
+    /// snake_case slug used for the DB column, template file names
+    /// (`<slug>.typ`) and the render-IR `report_type_slug` field.
+    pub fn slug(self) -> &'static str {
+        match self {
+            ReportType::WebPentest => "web_pentest",
+            ReportType::CodeAudit => "code_audit",
+            ReportType::RedTeam => "red_team",
+        }
+    }
+
+    /// Parse a slug back into a `ReportType` (defaults to web_pentest on an
+    /// unknown value rather than failing).
+    pub fn from_slug(s: &str) -> ReportType {
+        match s {
+            "code_audit" => ReportType::CodeAudit,
+            "red_team" => ReportType::RedTeam,
+            _ => ReportType::WebPentest,
+        }
+    }
+
+    /// All report types, in a stable order (for `list_templates`).
+    pub fn all() -> [ReportType; 3] {
+        [
+            ReportType::WebPentest,
+            ReportType::CodeAudit,
+            ReportType::RedTeam,
+        ]
+    }
+}
+
 /// A full report (header + narrative sections). Findings are stored separately
 /// and joined on demand.
 #[derive(Debug, Clone, Serialize, Deserialize)]

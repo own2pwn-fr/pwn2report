@@ -17,23 +17,27 @@ If two people want different reports, that's a template, not a setting.
 
 ## Status
 
-**v0 — technical skeleton.** The end-to-end stack is wired and de-risked: encrypted vault
-create/unlock (+ optional OS-keychain), a `web_pentest` report type, findings CRUD, and
-Typst → PDF export. See the roadmap for what comes next.
+**v1 — usable report writer.** Three report types (web pentest / code audit / red team),
+a full finding editor with an interactive CVSS 3.1/4.0 calculator, multi-format export
+(PDF / DOCX / Markdown / HTML), editable Typst templates, and vault management (passphrase
+rekey + backup). See the roadmap for what comes next.
 
-## Features (v0)
+## Features
 
-- 🔐 **Local-first & encrypted** — SQLCipher database, passphrase unlock, optional OS keychain.
-- 📝 **Structured findings** — severity, CVSS, CWE/CVE, description facets, remediation, evidence.
-- 📄 **PDF export** — embedded Typst engine, brand-styled (Inter + JetBrains Mono).
+- 🔐 **Local-first & encrypted** — SQLCipher database, passphrase unlock, optional OS keychain,
+  in-app passphrase change + vault backup.
+- 📝 **Full structured findings** — severity, interactive CVSS 3.1/4.0, CWE/CVE, description
+  facets, remediation, evidence, PoC, refs/tags, triage.
+- 📄 **Multi-format export** — PDF (embedded Typst, brand-styled), DOCX (via pandoc), Markdown,
+  self-contained HTML.
+- 🧩 **Three report types + editable templates** — web pentest, code audit, red team; edit the
+  Typst templates in-app.
 - 🎨 **own2pwn look** — dark/light, violet accent, smooth micro-interactions.
 
 ## Roadmap
 
-- **v1** — 3 report types · interactive CVSS 3.1/4.0 calculator · Markdown + HTML export ·
-  DOCX via Pandoc · editable templates · passphrase rekey.
 - **v2** — reusable vulnerability knowledge base · evidence with annotation/redaction/gallery ·
-  importers (Nessus/Burp/ZAP/Nuclei/SARIF).
+  importers (Nessus/Burp/ZAP/Nuclei/SARIF) · Markdown rich-text in PDF · pandoc bundled per-OS.
 - **v3** — pluggable AI assistance (local Ollama or cloud, opt-in, off by default) · runtime i18n · onboarding.
 - **v4** — end-to-end encrypted sync (CRDT), local-first preserved.
 

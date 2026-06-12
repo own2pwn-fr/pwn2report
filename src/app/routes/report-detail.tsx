@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Bug, Download, Plus } from "lucide-react";
+import { ArrowLeft, Bug, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
+import { ExportMenu } from "@/components/export-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -23,7 +21,7 @@ import {
   useFindings,
   useUpdateFinding,
 } from "@/lib/queries/use-findings";
-import { asIpcError, exportPdf } from "@/lib/ipc";
+import { asIpcError } from "@/lib/ipc";
 import { useDebouncedCallback } from "@/lib/use-debounced-callback";
 import { severityRank } from "@/lib/format";
 import type { Finding, FindingPatch, NewFinding, ReportPatch } from "@/lib/types";
@@ -77,7 +75,6 @@ export function ReportDetail() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Finding | undefined>(undefined);
-  const [exporting, setExporting] = useState(false);
 
   const commit = (patch: ReportPatch) =>
     updateReport.mutate(patch, {
@@ -116,29 +113,6 @@ export function ReportDetail() {
     });
   };
 
-  const handleExport = async () => {
-    if (!id || !report) return;
-    setExporting(true);
-    try {
-      const bytes = await exportPdf(id);
-      const path = await save({
-        defaultPath: `${report.client || "report"}-report.pdf`,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      });
-      if (!path) {
-        toast.message(t("report.exportCancelled"));
-        return;
-      }
-      await writeFile(path, new Uint8Array(bytes));
-      await openPath(path);
-      toast.success(t("report.exportSuccess"));
-    } catch (err) {
-      toast.error(asIpcError(err).message || t("report.exportError"));
-    } finally {
-      setExporting(false);
-    }
-  };
-
   if (isLoading) {
     return <p className="px-6 py-10 text-sm text-muted-foreground">{t("common.loading")}</p>;
   }
@@ -170,15 +144,7 @@ export function ReportDetail() {
           <ArrowLeft />
           {t("common.back")}
         </Button>
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          disabled={exporting}
-          title={t("report.exportPdf")}
-        >
-          <Download />
-          {exporting ? t("report.exporting") : t("report.exportPdf")}
-        </Button>
+        <ExportMenu report={report} />
       </div>
 
       <header className="mb-8 space-y-2">

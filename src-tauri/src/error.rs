@@ -30,7 +30,17 @@ pub enum AppError {
     #[error("render error: {0}")]
     Render(String),
 
-    /// An OS keychain error (kept rare — keychain ops degrade gracefully).
+    /// A pandoc (DOCX conversion) error: pandoc not found on PATH or it failed.
+    #[error("pandoc error: {0}")]
+    Pandoc(String),
+
+    /// A filesystem I/O error (template files, vault backup, temp files).
+    #[error("io error: {0}")]
+    Io(String),
+
+    /// An OS keychain error (kept rare — keychain ops degrade gracefully, so
+    /// this is part of the error surface for future use rather than hot today).
+    #[allow(dead_code)]
     #[error("keychain error: {0}")]
     Keychain(String),
 
@@ -48,6 +58,8 @@ impl AppError {
             AppError::NotFound => "not_found",
             AppError::Db(_) => "db",
             AppError::Render(_) => "render",
+            AppError::Pandoc(_) => "pandoc",
+            AppError::Io(_) => "io",
             AppError::Keychain(_) => "keychain",
             AppError::Serialization(_) => "serialization",
         }
@@ -79,6 +91,12 @@ impl From<rusqlite::Error> for AppError {
 impl From<serde_json::Error> for AppError {
     fn from(e: serde_json::Error) -> Self {
         AppError::Serialization(e.to_string())
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(e: std::io::Error) -> Self {
+        AppError::Io(e.to_string())
     }
 }
 

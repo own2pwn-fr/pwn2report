@@ -110,3 +110,66 @@ pub fn forget_keychain() -> AppResult<()> {
     let _ = keychain::delete();
     Ok(())
 }
+
+/// Change the vault passphrase via SQLCipher `PRAGMA rekey`.
+///
+/// Requires the vault to be unlocked. The `old` passphrase is re-verified
+/// (canary check against a fresh connection) before rekeying so a typo cannot
+/// silently rekey to an unintended new passphrase. The live in-memory
+/// connection is rekeyed in place, so it stays valid afterwards. If the
+/// passphrase was remembered in the keychain, the stored value is refreshed
+/// (best-effort).
+#[tauri::command]
+pub fn change_passphrase(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    old_passphrase: String,
+    new_passphrase: String,
+) -> AppResult<()> {
+    if !state.is_unlocked() {
+        return Err(AppError::VaultLocked);
+    }
+    let path = vault_path(&app)?;
+
+    // Re-verify the old passphrase against the canary on a throwaway, read-only
+    // connection (no schema write — safe alongside the live connection). Maps a
+    // wrong key to WrongPassphrase rather than rekeying blindly.
+    connection::verify_passphrase(&path, &old_passphrase)?;
+
+    // Rekey the live connection in place (escape ' by doubling, as PRAGMAs
+    // cannot be parameter-bound).
+    let escaped = new_passphrase.replace('\'', "''");
+    state.with_conn(|conn| {
+        conn.execute_batch(&format!("PRAGMA rekey = '{escaped}';"))?;
+        Ok(())
+    })?;
+
+    // Refresh the keychain entry if one was stored (best-effort, never fatal).
+    if let Ok(Some(_)) = keychain::get() {
+        let _ = keychain::store(&new_passphrase);
+    }
+    Ok(())
+}
+
+/// Write an encrypted copy of the vault to `dest_path`.
+///
+/// Requires the vault to be unlocked. The on-disk `vault.db` is already
+/// encrypted at rest, so we checkpoint the WAL (to fold pending writes into the
+/// main file) and then copy the file. The copy remains encrypted with the
+/// current passphrase.
+#[tauri::command]
+pub fn backup_vault(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    dest_path: String,
+) -> AppResult<()> {
+    let src = vault_path(&app)?;
+    // Fold the WAL into the main db so the file copy is complete.
+    state.with_conn(|conn| {
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        Ok(())
+    })?;
+    std::fs::copy(&src, &dest_path)
+        .map_err(|e| AppError::Io(format!("vault backup failed: {e}")))?;
+    Ok(())
+}

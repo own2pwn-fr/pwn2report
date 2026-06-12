@@ -19,7 +19,11 @@ use crate::models::{Finding, Report, ReportType, Severity};
 pub struct ReportDocument {
     pub title: String,
     pub client: String,
+    /// Human-readable report-type label ("Web Penetration Test", …).
     pub report_type: String,
+    /// snake_case report-type slug ("web_pentest", …) — used by renderers to
+    /// pick a per-type layout and by the Typst path to resolve the template.
+    pub report_type_slug: String,
     pub status: String,
     /// Localized/ISO date string for the title page.
     pub date: String,
@@ -190,6 +194,7 @@ pub fn build_document(report: &Report, mut findings: Vec<Finding>) -> ReportDocu
         title: report.title.clone(),
         client: report.client.clone(),
         report_type: report_type_label(report.report_type).to_string(),
+        report_type_slug: report.report_type.slug().to_string(),
         status: report.status.clone(),
         date,
         exec_summary: report.exec_summary.clone(),

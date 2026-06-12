@@ -77,3 +77,105 @@
   set align(center)
   [#counter(page).display("1 / 1", both: true)]
 }
+
+// ---------------------------------------------------------------------------
+// Shared page-level blocks used by every theme (web_pentest / code_audit /
+// red_team). Each takes the render-IR `doc` (or a finding `f`) and is robust to
+// empty strings / empty arrays.
+// ---------------------------------------------------------------------------
+
+// Centered title page: report-type, title, client, date, status.
+#let title-page(doc) = page(header: none, footer: none, {
+  set align(center + horizon)
+  block({
+    text(size: 12pt, fill: accent, weight: "bold", upper(doc.report_type))
+    v(1.2em)
+    text(size: 30pt, weight: "bold", doc.title)
+    v(0.6em)
+    line(length: 40%, stroke: 1pt + accent)
+    v(0.6em)
+    if doc.client != "" {
+      text(size: 16pt, fill: luma(80), doc.client)
+      v(0.4em)
+    }
+    text(size: 11pt, fill: luma(120), doc.date)
+    if doc.status != "" {
+      v(0.3em)
+      text(size: 9pt, fill: luma(150), upper(doc.status))
+    }
+  })
+})
+
+// The per-severity summary table (counts + total).
+#let severity-summary-table(summary) = {
+  let count-cell(sev, n) = (
+    severity-badge(sev),
+    align(center, text(weight: "bold", str(n))),
+  )
+  table(
+    columns: (auto, auto, auto, auto, auto, auto),
+    align: (horizon, horizon, horizon, horizon, horizon, horizon),
+    stroke: 0.5pt + luma(220),
+    inset: 8pt,
+    ..count-cell("critical", summary.critical),
+    ..count-cell("high", summary.high),
+    ..count-cell("medium", summary.medium),
+    ..count-cell("low", summary.low),
+    ..count-cell("info", summary.info),
+    table.cell(fill: luma(245), text(weight: "bold", "TOTAL")),
+    align(center, text(weight: "bold", str(summary.total))),
+  )
+}
+
+// A finding's heading line: severity badge + numbered title.
+#let finding-heading(n, f) = block(spacing: 8pt, {
+  grid(
+    columns: (auto, 1fr),
+    column-gutter: 10pt,
+    align: (horizon, horizon),
+    severity-badge(f.severity),
+    text(size: 13pt, weight: "bold", [#(n). #f.title]),
+  )
+})
+
+// A finding's meta line (CWE / CVE / CVSS / confidence / kind) + CVSS vector.
+#let finding-meta(f) = {
+  let meta = ()
+  if f.cwe != "" { meta.push(f.cwe) }
+  if f.cve != "" { meta.push(f.cve) }
+  if f.cvss_score != "" { meta.push("CVSS " + f.cvss_score) }
+  if f.confidence != "" { meta.push("confidence: " + f.confidence) }
+  if f.kind != "" { meta.push(f.kind) }
+  if meta.len() > 0 {
+    block(spacing: 6pt, text(size: 8.5pt, fill: luma(120), meta.join("  ·  ")))
+  }
+  if f.cvss_vector != "" {
+    block(spacing: 8pt, text(size: 8pt, fill: luma(140), font: "JetBrains Mono", f.cvss_vector))
+  }
+}
+
+// Evidence location string ("file:lines" / "file" / "").
+#let evidence-loc(f) = {
+  if f.evidence_file != "" {
+    if f.evidence_lines != "" { f.evidence_file + ":" + f.evidence_lines } else { f.evidence_file }
+  } else { "" }
+}
+
+// A reference list block (only when refs is non-empty).
+#let references-block(refs) = {
+  if refs.len() > 0 {
+    block(spacing: 6pt, {
+      text(size: 9pt, weight: "semibold", "References")
+      list(..refs.map(r => text(size: 9pt, link(r))))
+    })
+  }
+}
+
+// A horizontal separator between findings (skips the last).
+#let finding-separator(i, total) = {
+  if i + 1 < total {
+    v(0.4em)
+    line(length: 100%, stroke: 0.5pt + luma(225))
+    v(0.4em)
+  }
+}

@@ -9,21 +9,13 @@ use crate::models::{NewReport, Report, ReportPatch, ReportSummary, ReportType};
 
 /// Serialize a `ReportType` to its snake_case column value.
 fn report_type_str(t: ReportType) -> &'static str {
-    match t {
-        ReportType::WebPentest => "web_pentest",
-        ReportType::CodeAudit => "code_audit",
-        ReportType::RedTeam => "red_team",
-    }
+    t.slug()
 }
 
 /// Parse a column value back into a `ReportType` (defaults to web_pentest on an
 /// unknown value rather than failing a whole query).
 fn report_type_from(s: &str) -> ReportType {
-    match s {
-        "code_audit" => ReportType::CodeAudit,
-        "red_team" => ReportType::RedTeam,
-        _ => ReportType::WebPentest,
-    }
+    ReportType::from_slug(s)
 }
 
 /// Map a full `reports` row to a `Report`.
