@@ -7,11 +7,14 @@ import { ReportsList } from "@/app/routes/reports-list";
 import { ReportDetail } from "@/app/routes/report-detail";
 import { Settings } from "@/app/routes/settings";
 import { KnowledgeBase } from "@/app/routes/kb";
+import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
+import { useOnboarding } from "@/lib/use-onboarding";
 
 function GatedRoutes() {
   const location = useLocation();
   const { data: status, isLoading } = useVaultStatus();
   const { t } = useTranslation();
+  const { showOnboarding, finish } = useOnboarding();
 
   if (isLoading || !status) {
     return (
@@ -29,16 +32,19 @@ function GatedRoutes() {
 
   // Unlocked: keep users out of the vault screen.
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        <Route path="/vault" element={<Navigate to="/" replace />} />
-        <Route path="/" element={<ReportsList />} />
-        <Route path="/kb" element={<KnowledgeBase />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/reports/:id" element={<ReportDetail />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AnimatePresence>
+    <>
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
+          <Route path="/vault" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<ReportsList />} />
+          <Route path="/kb" element={<KnowledgeBase />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/reports/:id" element={<ReportDetail />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AnimatePresence>
+      <OnboardingDialog open={showOnboarding} onDone={finish} />
+    </>
   );
 }
 

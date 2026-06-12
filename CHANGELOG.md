@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added — v3 (pluggable AI, runtime i18n, onboarding)
+- Pluggable AI assistance, **opt-in and OFF by default**: Ollama (local) or a cloud API
+  (OpenAI-compatible / Anthropic). Config in `<app_config_dir>/ai.json`; the API key lives in
+  the OS keychain. Commands `ai_get_config`, `ai_set_config`, `ai_test_connection`,
+  `ai_complete`. AI-assist (✨ improve/generate/summarize/translate) on finding description
+  facets, remediation, and the exec summary — only shown when enabled.
+- Runtime language switching with a complete **French** locale (full `fr.json` parity); choice
+  persisted; switcher in Settings.
+- First-run onboarding tour + tooltips on key icon actions.
+
 ### Added — v2 round 2 (evidence-image pipeline)
 - Per-finding evidence images stored in the SQLCipher-encrypted vault
   (`evidence_images` table, bytes as a BLOB → encrypted at rest). Schema migration to v3

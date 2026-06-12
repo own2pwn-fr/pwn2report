@@ -7,6 +7,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiConfig,
+  AiConfigView,
   EvidenceImage,
   Finding,
   FindingPatch,
@@ -165,3 +167,19 @@ export const reorderEvidenceImages = (findingId: string, orderedIds: string[]) =
 /** Import scanner output into a report. Resolves to the imported finding count. */
 export const importFindings = (reportId: string, format: ImportFormat, content: string) =>
   invoke<number>("import_findings", { reportId, format, content });
+
+// ── AI assistance ──────────────────────────────────────────────────────────────
+
+export const aiGetConfig = () => invoke<AiConfigView>("ai_get_config");
+
+/**
+ * Persist the AI configuration. Pass `apiKey: undefined`/`null` to keep the
+ * existing key untouched; pass an empty string to clear it.
+ */
+export const aiSetConfig = (config: AiConfig, apiKey?: string | null) =>
+  invoke<void>("ai_set_config", { config, apiKey: apiKey ?? null });
+
+export const aiTestConnection = () => invoke<string>("ai_test_connection");
+
+export const aiComplete = (prompt: string, system?: string | null) =>
+  invoke<string>("ai_complete", { system: system ?? null, prompt });

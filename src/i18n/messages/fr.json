@@ -1,0 +1,417 @@
+{
+  "app": {
+    "name": "pwn2report",
+    "tagline": "Rédigez vos rapports de pentest, hors ligne et chiffrés."
+  },
+  "common": {
+    "cancel": "Annuler",
+    "create": "Créer",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "close": "Fermer",
+    "back": "Retour",
+    "confirm": "Confirmer",
+    "loading": "Chargement…",
+    "optional": "facultatif",
+    "none": "Aucun",
+    "retry": "Réessayer",
+    "error": "Une erreur est survenue"
+  },
+  "theme": {
+    "toggle": "Changer de thème",
+    "light": "Mode clair",
+    "dark": "Mode sombre"
+  },
+  "language": {
+    "label": "Langue",
+    "toggle": "Changer de langue",
+    "en": "Anglais",
+    "fr": "Français"
+  },
+  "vault": {
+    "title": "Coffre-fort",
+    "createTitle": "Créez votre coffre-fort",
+    "createSubtitle": "Choisissez une phrase secrète pour chiffrer vos rapports sur cet appareil.",
+    "unlockTitle": "Déverrouiller le coffre-fort",
+    "unlockSubtitle": "Saisissez votre phrase secrète pour accéder à vos rapports.",
+    "passphrase": "Phrase secrète",
+    "passphrasePlaceholder": "Saisissez une phrase secrète robuste",
+    "confirmPassphrase": "Confirmer la phrase secrète",
+    "confirmPlaceholder": "Saisissez à nouveau votre phrase secrète",
+    "remember": "Mémoriser sur cet appareil",
+    "rememberHint": "Stocke la phrase secrète dans le trousseau du système pour un déverrouillage en un clic.",
+    "create": "Créer le coffre-fort",
+    "unlock": "Déverrouiller",
+    "unlockWithKeychain": "Déverrouiller avec la phrase secrète enregistrée",
+    "creating": "Création…",
+    "unlocking": "Déverrouillage…",
+    "mismatch": "Les phrases secrètes ne correspondent pas.",
+    "tooShort": "La phrase secrète doit comporter au moins 8 caractères.",
+    "wrong": "Phrase secrète incorrecte. Veuillez réessayer.",
+    "keychainFailed": "Impossible de déverrouiller depuis la phrase secrète enregistrée.",
+    "lock": "Verrouiller le coffre-fort",
+    "locked": "Coffre-fort verrouillé"
+  },
+  "reports": {
+    "title": "Rapports",
+    "subtitle": "Toutes vos missions au même endroit.",
+    "new": "Nouveau rapport",
+    "newTitle": "Créer un nouveau rapport",
+    "fieldTitle": "Titre du rapport",
+    "fieldTitlePlaceholder": "ex. Évaluation d'application web T3",
+    "fieldClient": "Client",
+    "fieldClientPlaceholder": "ex. Acme Corp",
+    "fieldType": "Type de rapport",
+    "findingCount_one": "{{count}} vulnérabilité",
+    "findingCount_other": "{{count}} vulnérabilités",
+    "updated": "Mis à jour {{date}}",
+    "open": "Ouvrir le rapport",
+    "deleteConfirm": "Supprimer ce rapport et toutes ses vulnérabilités ? Cette action est irréversible.",
+    "empty": {
+      "title": "Aucun rapport pour l'instant",
+      "body": "Créez votre premier rapport pour commencer à documenter vos vulnérabilités.",
+      "cta": "Créer votre premier rapport"
+    },
+    "createError": "Impossible de créer le rapport."
+  },
+  "reportType": {
+    "web_pentest": "Pentest web",
+    "code_audit": "Audit de code",
+    "red_team": "Red team"
+  },
+  "report": {
+    "execSummary": "Synthèse managériale",
+    "execSummaryPlaceholder": "Vue d'ensemble à destination des décideurs non techniques…",
+    "scope": "Périmètre",
+    "scopePlaceholder": "Cibles, environnements et contraintes inclus dans le périmètre…",
+    "methodology": "Méthodologie",
+    "methodologyPlaceholder": "Approche, normes et outils utilisés…",
+    "exportPdf": "Exporter en PDF",
+    "export": "Exporter",
+    "exportAs": "Exporter en",
+    "exporting": "Export en cours…",
+    "formatPdf": "PDF",
+    "formatDocx": "Word (DOCX)",
+    "formatMarkdown": "Markdown",
+    "formatHtml": "HTML",
+    "exportSuccess": "PDF exporté avec succès.",
+    "exportSuccessFormat": "{{format}} exporté avec succès.",
+    "exportError": "Impossible d'exporter le rapport.",
+    "exportCancelled": "Export annulé.",
+    "notFound": "Rapport introuvable.",
+    "details": "Détails du rapport"
+  },
+  "findings": {
+    "title": "Vulnérabilités",
+    "new": "Ajouter une vulnérabilité",
+    "newTitle": "Nouvelle vulnérabilité",
+    "editTitle": "Modifier la vulnérabilité",
+    "addFromKb": "Ajouter depuis la base de connaissances",
+    "importCta": "Importer des vulnérabilités",
+    "kbPicker": {
+      "title": "Ajouter depuis la base de connaissances",
+      "empty": "Votre base de connaissances est vide. Ajoutez d'abord des entrées depuis la page Base de connaissances.",
+      "added": "Vulnérabilité ajoutée depuis la base de connaissances.",
+      "error": "Impossible d'ajouter la vulnérabilité depuis la base de connaissances."
+    },
+    "import": {
+      "title": "Importer des vulnérabilités",
+      "format": "Format du scanner",
+      "file": "Fichier",
+      "chooseFile": "Choisir un fichier",
+      "noFile": "Aucun fichier sélectionné",
+      "cta": "Importer",
+      "importing": "Import en cours…",
+      "success_one": "{{count}} vulnérabilité importée.",
+      "success_other": "{{count}} vulnérabilités importées.",
+      "error": "Impossible d'importer les vulnérabilités."
+    },
+    "empty": {
+      "title": "Aucune vulnérabilité pour l'instant",
+      "body": "Ajoutez votre première vulnérabilité à ce rapport.",
+      "cta": "Ajouter une vulnérabilité"
+    },
+    "deleteConfirm": "Supprimer cette vulnérabilité ? Cette action est irréversible.",
+    "createError": "Impossible de créer la vulnérabilité.",
+    "addRow": "Ajouter",
+    "section": {
+      "classification": "Classification",
+      "cvss": "Score CVSS",
+      "description": "Description",
+      "evidence": "Preuves",
+      "poc": "Preuve de concept",
+      "remediation": "Remédiation",
+      "metadata": "Références et étiquettes"
+    },
+    "fieldTitle": "Titre",
+    "fieldTitlePlaceholder": "ex. Injection SQL dans le formulaire de connexion",
+    "fieldSeverity": "Criticité",
+    "fieldConfidence": "Confiance",
+    "fieldKind": "Type",
+    "fieldTriageStatus": "Statut de triage",
+    "fieldTriageNote": "Note de triage",
+    "fieldTriageNotePlaceholder": "Pourquoi ce statut a été retenu…",
+    "fieldCwe": "CWE",
+    "fieldCwePlaceholder": "ex. CWE-89",
+    "fieldCve": "CVE",
+    "fieldCvePlaceholder": "ex. CVE-2024-1234",
+    "fieldCvssVector": "Vecteur CVSS",
+    "fieldCvssVectorPlaceholder": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "fieldSummary": "Résumé",
+    "fieldSummaryPlaceholder": "Quel est le problème, en une ou deux phrases…",
+    "fieldRootCause": "Cause racine",
+    "fieldRootCausePlaceholder": "Pourquoi cela se produit-il…",
+    "fieldAttackVector": "Vecteur d'attaque",
+    "fieldAttackVectorPlaceholder": "Comment est-ce exploité…",
+    "fieldBusinessImpact": "Impact métier",
+    "fieldBusinessImpactPlaceholder": "Ce que cela implique pour l'organisation…",
+    "fieldTechnicalDetails": "Détails techniques",
+    "fieldTechnicalDetailsPlaceholder": "Analyse technique approfondie…",
+    "fieldFix": "Remédiation",
+    "fieldFixPlaceholder": "Comment corriger le problème…",
+    "fieldCodePatch": "Correctif de code",
+    "fieldCodePatchPlaceholder": "Un diff ou un extrait corrigé…",
+    "fieldRemediationRefs": "Références de remédiation",
+    "fieldEvidenceFile": "Fichier",
+    "fieldEvidenceFilePlaceholder": "src/auth/login.py",
+    "fieldEvidenceStartLine": "Ligne de début",
+    "fieldEvidenceEndLine": "Ligne de fin",
+    "fieldEvidenceSnippet": "Extrait",
+    "fieldEvidenceSnippetPlaceholder": "Extrait de code pertinent…",
+    "fieldPocScenario": "Scénario",
+    "fieldPocScenarioPlaceholder": "Contexte et conditions préalables de l'exploitation…",
+    "fieldPocSteps": "Étapes d'exploitation",
+    "fieldPocStepsPlaceholder": "ex. Envoyer la requête forgée à /login",
+    "fieldPocPayload": "Charge utile",
+    "fieldPocPayloadPlaceholder": "La charge utile brute utilisée…",
+    "fieldRefs": "Références",
+    "fieldRefPlaceholder": "https://…",
+    "fieldTags": "Étiquettes",
+    "fieldTagPlaceholder": "ex. authentification"
+  },
+  "evidence": {
+    "section": "Captures de preuve",
+    "saveFirst": "Enregistrez d'abord la vulnérabilité, puis vous pourrez y joindre des captures de preuve.",
+    "empty": "Aucune image pour l'instant. Ajoutez une capture d'écran pour illustrer cette vulnérabilité.",
+    "add": "Ajouter une image",
+    "adding": "Ajout en cours…",
+    "addError": "Impossible d'ajouter l'image.",
+    "loadError": "Impossible de charger l'image.",
+    "loading": "Chargement…",
+    "caption": "Légende",
+    "captionPlaceholder": "Décrivez ce que montre cette capture d'écran…",
+    "captionSaved": "Légende mise à jour.",
+    "captionError": "Impossible de mettre à jour la légende.",
+    "deleteConfirm": "Supprimer cette image ? Cette action est irréversible.",
+    "deleteError": "Impossible de supprimer l'image.",
+    "moveUp": "Déplacer vers le haut",
+    "moveDown": "Déplacer vers le bas",
+    "annotate": "Annoter",
+    "annotatedSuffix": " (annotée)",
+    "paste": "Coller une image",
+    "pasteHint": "Astuce : copiez une image et appuyez sur Ctrl+V pour la coller ici.",
+    "pasteEmpty": "Aucune image trouvée dans le presse-papiers.",
+    "pasteError": "Impossible de coller l'image."
+  },
+  "annotator": {
+    "title": "Annoter l'image",
+    "tool": "Outil",
+    "tools": {
+      "redact": "Masquer",
+      "box": "Cadre",
+      "arrow": "Flèche",
+      "pen": "Crayon"
+    },
+    "color": "Couleur",
+    "undo": "Annuler",
+    "clear": "Effacer",
+    "save": "Enregistrer comme nouvelle image",
+    "saving": "Enregistrement…",
+    "saveError": "Impossible d'enregistrer l'image annotée.",
+    "redactHint": "Le masquage est définitivement intégré aux pixels enregistrés."
+  },
+  "kb": {
+    "title": "Base de connaissances",
+    "subtitle": "Un catalogue réutilisable de vulnérabilités à insérer dans n'importe quel rapport.",
+    "new": "Nouvelle entrée",
+    "newTitle": "Nouvelle entrée de la base de connaissances",
+    "editTitle": "Modifier l'entrée de la base de connaissances",
+    "searchPlaceholder": "Rechercher par titre ou étiquette…",
+    "filterAllSeverities": "Toutes les criticités",
+    "noMatches": "Aucune entrée ne correspond à votre recherche.",
+    "importBundled": "Importer le catalogue intégré",
+    "importSuccess_one": "{{count}} entrée importée.",
+    "importSuccess_other": "{{count}} entrées importées.",
+    "importError": "Impossible d'importer le catalogue intégré.",
+    "createError": "Impossible de créer l'entrée.",
+    "deleteConfirm": "Supprimer cette entrée de la base de connaissances ? Cette action est irréversible.",
+    "empty": {
+      "title": "Votre base de connaissances est vide",
+      "body": "Importez le catalogue intégré de vulnérabilités courantes, ou créez vos propres entrées.",
+      "cta": "Importer le catalogue intégré"
+    }
+  },
+  "importFormat": {
+    "sarif": "SARIF",
+    "nuclei": "Nuclei",
+    "zap": "OWASP ZAP",
+    "burp": "Burp Suite",
+    "nessus": "Nessus",
+    "secai": "secai"
+  },
+  "kind": {
+    "manual": "Manuel",
+    "sast": "SAST",
+    "iac": "IaC",
+    "sca": "SCA",
+    "secret": "Secret"
+  },
+  "severity": {
+    "info": "Information",
+    "low": "Faible",
+    "medium": "Moyenne",
+    "high": "Élevée",
+    "critical": "Critique"
+  },
+  "confidence": {
+    "low": "Faible",
+    "medium": "Moyenne",
+    "high": "Élevée"
+  },
+  "triage": {
+    "open": "Ouverte",
+    "acknowledged": "Reconnue",
+    "false_positive": "Faux positif",
+    "resolved": "Résolue"
+  },
+  "cvss": {
+    "score": "Score {{score}}",
+    "version": "CVSS {{version}}",
+    "rating": {
+      "CRITICAL": "Critique",
+      "HIGH": "Élevée",
+      "MEDIUM": "Moyenne",
+      "LOW": "Faible",
+      "NONE": "Aucune"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "subtitle": "Gérez votre coffre-fort et vos modèles de rapport.",
+    "appearance": {
+      "title": "Apparence",
+      "subtitle": "Choisissez le thème et la langue de l'application.",
+      "theme": "Thème",
+      "language": "Langue",
+      "showIntro": "Revoir l'introduction",
+      "showIntroHint": "Réafficher le guide de bienvenue au prochain déverrouillage.",
+      "showIntroCta": "Afficher l'introduction"
+    },
+    "ai": {
+      "title": "Assistance IA",
+      "subtitle": "Améliorez et générez le texte de vos rapports à l'aide d'un modèle de langage.",
+      "enabled": "Activer l'assistance IA",
+      "enabledHint": "Désactivée par défaut. Aucune donnée n'est envoyée à un fournisseur tant que l'assistance n'est pas activée.",
+      "privacyNote": "Lorsqu'elle est activée, le texte des champs concernés est envoyé au fournisseur configuré pour traitement. Avec Ollama (local), les données ne quittent pas votre machine.",
+      "provider": "Fournisseur",
+      "providerOllama": "Ollama (local)",
+      "providerOpenai": "Compatible OpenAI",
+      "providerAnthropic": "Anthropic",
+      "baseUrl": "URL de base",
+      "baseUrlPlaceholder": "ex. http://localhost:11434",
+      "model": "Modèle",
+      "modelPlaceholder": "ex. llama3.1",
+      "apiKey": "Clé API",
+      "apiKeyPlaceholder": "Saisissez votre clé API",
+      "apiKeyKeepPlaceholder": "Laissez vide pour conserver la clé existante",
+      "apiKeyHint": "La clé est stockée de manière chiffrée dans votre coffre-fort.",
+      "test": "Tester la connexion",
+      "testing": "Test en cours…",
+      "testError": "Impossible de joindre le fournisseur IA.",
+      "saveSuccess": "Configuration IA enregistrée.",
+      "saveError": "Impossible d'enregistrer la configuration IA."
+    },
+    "security": {
+      "title": "Sécurité",
+      "subtitle": "Modifiez votre phrase secrète maître ou sauvegardez votre coffre-fort.",
+      "current": "Phrase secrète actuelle",
+      "new": "Nouvelle phrase secrète",
+      "confirm": "Confirmer la nouvelle phrase secrète",
+      "changeCta": "Modifier la phrase secrète",
+      "changeSuccess": "Phrase secrète modifiée.",
+      "changeError": "Impossible de modifier la phrase secrète.",
+      "backupTitle": "Sauvegarder le coffre-fort",
+      "backupHint": "Enregistrez une copie chiffrée de votre coffre-fort à un autre emplacement.",
+      "backupCta": "Sauvegarder le coffre-fort",
+      "backingUp": "Sauvegarde en cours…",
+      "backupSuccess": "Coffre-fort sauvegardé.",
+      "backupError": "Impossible de sauvegarder le coffre-fort.",
+      "vaultFile": "Base de données du coffre-fort"
+    },
+    "templates": {
+      "title": "Modèles",
+      "subtitle": "Personnalisez la source Typst utilisée pour générer chaque type de rapport.",
+      "reportType": "Type de rapport",
+      "source": "Source du modèle (.typ)",
+      "custom": "Personnalisé",
+      "default": "Par défaut",
+      "empty": "Aucun modèle disponible.",
+      "resetCta": "Réinitialiser par défaut",
+      "resetConfirm": "Réinitialiser ce modèle à sa valeur intégrée par défaut ? Vos modifications seront perdues.",
+      "saveSuccess": "Modèle enregistré.",
+      "saveError": "Impossible d'enregistrer le modèle.",
+      "resetSuccess": "Modèle réinitialisé par défaut.",
+      "resetError": "Impossible de réinitialiser le modèle."
+    }
+  },
+  "ai": {
+    "assist": "Assistance IA",
+    "working": "L'IA travaille…",
+    "error": "L'assistance IA a échoué.",
+    "empty": "Saisissez d'abord un peu de texte pour que l'IA puisse l'améliorer.",
+    "done": "Texte mis à jour par l'IA.",
+    "tasks": {
+      "improve": "Améliorer la rédaction",
+      "generate": "Générer un brouillon",
+      "summarize": "Résumer",
+      "toFrench": "Traduire en français",
+      "toEnglish": "Traduire en anglais"
+    }
+  },
+  "onboarding": {
+    "skip": "Passer",
+    "next": "Suivant",
+    "back": "Précédent",
+    "done": "Commencer",
+    "stepCount": "Étape {{current}} sur {{total}}",
+    "steps": {
+      "welcome": {
+        "title": "Bienvenue dans pwn2report",
+        "body": "Rédigez des rapports de sécurité soignés, hors ligne et chiffrés sur votre appareil. Voici un aperçu rapide pour démarrer."
+      },
+      "reports": {
+        "title": "Créez un rapport",
+        "body": "Commencez par créer un rapport pour votre mission, puis renseignez la synthèse managériale, le périmètre et la méthodologie."
+      },
+      "findings": {
+        "title": "Ajoutez des vulnérabilités",
+        "body": "Ajoutez des vulnérabilités manuellement, depuis votre base de connaissances réutilisable, ou en important la sortie d'un scanner (SARIF, Nuclei, ZAP, Burp, Nessus)."
+      },
+      "evidence": {
+        "title": "Joignez des preuves",
+        "body": "Joignez des captures d'écran et annotez-les — masquez les données sensibles, encadrez et pointez les détails importants directement dans l'application."
+      },
+      "export": {
+        "title": "Exportez votre rapport",
+        "body": "Générez le rapport final en PDF, Word (DOCX), Markdown ou HTML en un clic."
+      },
+      "ai": {
+        "title": "Assistance IA optionnelle",
+        "body": "Activez l'assistance IA dans les Paramètres pour améliorer, générer ou traduire le texte de vos rapports. Désactivée par défaut — vos données restent privées tant que vous ne l'activez pas."
+      }
+    }
+  }
+}

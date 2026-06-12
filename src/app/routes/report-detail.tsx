@@ -16,6 +16,7 @@ import { FindingCard } from "@/components/findings/finding-card";
 import { FindingForm } from "@/components/findings/finding-form";
 import { KbPicker } from "@/components/findings/kb-picker";
 import { ImportFindingsDialog } from "@/components/findings/import-findings-dialog";
+import { AiAssistButton } from "@/components/ai/ai-assist-button";
 import { useReport, useUpdateReport } from "@/lib/queries/use-reports";
 import {
   useCreateFinding,
@@ -43,21 +44,40 @@ function DebouncedField({
   placeholder,
   onCommit,
   rows = 4,
+  aiAssist = false,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   onCommit: (value: string) => void;
   rows?: number;
+  /** Show an AI assist button next to the label (gated on AI being enabled). */
+  aiAssist?: boolean;
 }) {
   const [local, setLocal] = useState(value);
   // Re-sync when the upstream value changes (e.g. switching reports).
   useEffect(() => setLocal(value), [value]);
   const debounced = useDebouncedCallback((v: string) => onCommit(v), 600);
 
+  // Replace the field with AI output and commit immediately (no debounce wait).
+  const applyAi = (text: string) => {
+    setLocal(text);
+    onCommit(text);
+  };
+
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label>{label}</Label>
+        {aiAssist && (
+          <AiAssistButton
+            value={local}
+            fieldLabel={label}
+            onResult={applyAi}
+            className="-my-2 size-7"
+          />
+        )}
+      </div>
       <Textarea
         value={local}
         rows={rows}
@@ -199,6 +219,7 @@ export function ReportDetail() {
             placeholder={t("report.execSummaryPlaceholder")}
             onCommit={(v) => commit({ exec_summary: v })}
             rows={4}
+            aiAssist
           />
           <DebouncedField
             label={t("report.scope")}

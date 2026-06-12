@@ -51,6 +51,12 @@ pub enum AppError {
     /// A scanner-import parse failure (unknown format, malformed input).
     #[error("import error: {0}")]
     Import(String),
+
+    /// An AI-assistance failure: disabled/unconfigured, transport error, or an
+    /// unexpected provider response. The string is a clear, user-facing message
+    /// (usually including the provider name and HTTP status).
+    #[error("AI error: {0}")]
+    Ai(String),
 }
 
 impl AppError {
@@ -67,6 +73,7 @@ impl AppError {
             AppError::Keychain(_) => "keychain",
             AppError::Serialization(_) => "serialization",
             AppError::Import(_) => "import",
+            AppError::Ai(_) => "ai",
         }
     }
 }

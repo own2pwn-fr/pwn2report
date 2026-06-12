@@ -1,6 +1,7 @@
 //! Tauri command surface. All commands are synchronous and return
 //! `Result<T, AppError>`.
 
+pub mod ai;
 pub mod evidence;
 pub mod export;
 pub mod findings;

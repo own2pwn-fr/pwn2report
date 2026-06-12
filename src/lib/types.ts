@@ -190,3 +190,18 @@ export interface IpcError {
   kind: string;
   message: string;
 }
+
+// ── AI assistance ─────────────────────────────────────────────────────────────
+
+export type AiProvider = "ollama" | "openai" | "anthropic";
+
+export interface AiConfig {
+  enabled: boolean;
+  provider: AiProvider;
+  base_url: string;
+  model: string;
+}
+
+export interface AiConfigView extends AiConfig {
+  has_key: boolean;
+}

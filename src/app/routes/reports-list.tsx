@@ -23,7 +23,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
 import { useCreateReport, useDeleteReport, useReports } from "@/lib/queries/use-reports";
@@ -159,39 +161,52 @@ export function ReportsList() {
           <h1 className="display-xl">{t("reports.title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("reports.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <ThemeToggle />
-          <Button
-            variant="ghost"
-            size="icon"
-            title={t("kb.title")}
-            aria-label={t("kb.title")}
-            onClick={() => navigate("/kb")}
-          >
-            <BookMarked />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title={t("settings.title")}
-            aria-label={t("settings.title")}
-            onClick={() => navigate("/settings")}
-          >
-            <SettingsIcon />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title={t("vault.lock")}
-            aria-label={t("vault.lock")}
-            onClick={() =>
-              lockVault.mutate(undefined, {
-                onSuccess: () => toast.success(t("vault.locked")),
-              })
-            }
-          >
-            <Lock />
-          </Button>
+          <LanguageToggle />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("kb.title")}
+                onClick={() => navigate("/kb")}
+              >
+                <BookMarked />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("kb.title")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("settings.title")}
+                onClick={() => navigate("/settings")}
+              >
+                <SettingsIcon />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("settings.title")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("vault.lock")}
+                onClick={() =>
+                  lockVault.mutate(undefined, {
+                    onSuccess: () => toast.success(t("vault.locked")),
+                  })
+                }
+              >
+                <Lock />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("vault.lock")}</TooltipContent>
+          </Tooltip>
           <NewReportDialog onCreated={(id) => navigate(`/reports/${id}`)} />
         </div>
       </header>

@@ -25,6 +25,12 @@
     "light": "Light mode",
     "dark": "Dark mode"
   },
+  "language": {
+    "label": "Language",
+    "toggle": "Change language",
+    "en": "English",
+    "fr": "French"
+  },
   "vault": {
     "title": "Vault",
     "createTitle": "Create your vault",
@@ -295,6 +301,39 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Manage your vault and report templates.",
+    "appearance": {
+      "title": "Appearance",
+      "subtitle": "Choose the app theme and language.",
+      "theme": "Theme",
+      "language": "Language",
+      "showIntro": "Replay the introduction",
+      "showIntroHint": "Show the welcome tour again on your next unlock.",
+      "showIntroCta": "Show intro"
+    },
+    "ai": {
+      "title": "AI assistance",
+      "subtitle": "Improve and generate report text with a language model.",
+      "enabled": "Enable AI assistance",
+      "enabledHint": "Off by default. No data is sent to any provider unless assistance is enabled.",
+      "privacyNote": "When enabled, the text of the relevant fields is sent to the configured provider for processing. With Ollama (local), data never leaves your machine.",
+      "provider": "Provider",
+      "providerOllama": "Ollama (local)",
+      "providerOpenai": "OpenAI-compatible",
+      "providerAnthropic": "Anthropic",
+      "baseUrl": "Base URL",
+      "baseUrlPlaceholder": "e.g. http://localhost:11434",
+      "model": "Model",
+      "modelPlaceholder": "e.g. llama3.1",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "Enter your API key",
+      "apiKeyKeepPlaceholder": "Leave blank to keep the existing key",
+      "apiKeyHint": "The key is stored encrypted inside your vault.",
+      "test": "Test connection",
+      "testing": "Testing…",
+      "testError": "Could not reach the AI provider.",
+      "saveSuccess": "AI configuration saved.",
+      "saveError": "Could not save the AI configuration."
+    },
     "security": {
       "title": "Security",
       "subtitle": "Change your master passphrase or back up your vault.",
@@ -326,6 +365,53 @@
       "saveError": "Could not save the template.",
       "resetSuccess": "Template reset to default.",
       "resetError": "Could not reset the template."
+    }
+  },
+  "ai": {
+    "assist": "AI assist",
+    "working": "AI is working…",
+    "error": "AI assistance failed.",
+    "empty": "Type some text first so the AI has something to improve.",
+    "done": "Text updated by AI.",
+    "tasks": {
+      "improve": "Improve writing",
+      "generate": "Generate a draft",
+      "summarize": "Summarize",
+      "toFrench": "Translate to French",
+      "toEnglish": "Translate to English"
+    }
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "next": "Next",
+    "back": "Back",
+    "done": "Get started",
+    "stepCount": "Step {{current}} of {{total}}",
+    "steps": {
+      "welcome": {
+        "title": "Welcome to pwn2report",
+        "body": "Write polished security reports, offline and encrypted on your device. Here is a quick tour to get you started."
+      },
+      "reports": {
+        "title": "Create a report",
+        "body": "Start by creating a report for your engagement, then fill in the executive summary, scope and methodology."
+      },
+      "findings": {
+        "title": "Add findings",
+        "body": "Add findings manually, from your reusable knowledge base, or by importing scanner output (SARIF, Nuclei, ZAP, Burp, Nessus)."
+      },
+      "evidence": {
+        "title": "Attach evidence",
+        "body": "Attach screenshots and annotate them — redact sensitive data, box and point out the important details right inside the app."
+      },
+      "export": {
+        "title": "Export your report",
+        "body": "Generate the final report as PDF, Word (DOCX), Markdown or HTML in a single click."
+      },
+      "ai": {
+        "title": "Optional AI assistance",
+        "body": "Enable AI assistance in Settings to improve, generate or translate your report text. Off by default — your data stays private until you turn it on."
+      }
     }
   }
 }

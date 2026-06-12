@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
 import {
   useCreateVault,
   useUnlockVault,
@@ -76,8 +77,9 @@ export function VaultGate() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
-      <div className="absolute right-4 top-4">
+      <div className="absolute right-4 top-4 flex items-center gap-1">
         <ThemeToggle />
+        <LanguageToggle />
       </div>
       <motion.div
         initial={{ opacity: 0, y: 16 }}

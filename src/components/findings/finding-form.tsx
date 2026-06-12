@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { CvssCalculator } from "@/components/cvss-calculator";
 import { EvidenceGallery } from "@/components/evidence/evidence-gallery";
+import { AiAssistButton } from "@/components/ai/ai-assist-button";
 import type {
   Confidence,
   Evidence,
@@ -214,6 +215,44 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </section>
+  );
+}
+
+/**
+ * A labelled Textarea with an AI assist button next to the label. The assist
+ * button only renders when AI assistance is enabled (handled internally).
+ */
+function AiTextarea({
+  id,
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        <AiAssistButton
+          value={value}
+          fieldLabel={label}
+          onResult={onChange}
+          className="-my-2 size-7"
+        />
+      </div>
+      <Textarea
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
   );
 }
 
@@ -445,52 +484,42 @@ export function FindingForm({
 
           {/* ── Description ───────────────────────────────────────────────── */}
           <Section title={t("findings.section.description")}>
-            <div className="space-y-1.5">
-              <Label htmlFor="f-summary">{t("findings.fieldSummary")}</Label>
-              <Textarea
-                id="f-summary"
-                value={state.summary}
-                onChange={(e) => set("summary", e.target.value)}
-                placeholder={t("findings.fieldSummaryPlaceholder")}
-              />
-            </div>
+            <AiTextarea
+              id="f-summary"
+              label={t("findings.fieldSummary")}
+              value={state.summary}
+              onChange={(v) => set("summary", v)}
+              placeholder={t("findings.fieldSummaryPlaceholder")}
+            />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="f-root">{t("findings.fieldRootCause")}</Label>
-                <Textarea
-                  id="f-root"
-                  value={state.root_cause}
-                  onChange={(e) => set("root_cause", e.target.value)}
-                  placeholder={t("findings.fieldRootCausePlaceholder")}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="f-vector">{t("findings.fieldAttackVector")}</Label>
-                <Textarea
-                  id="f-vector"
-                  value={state.attack_vector}
-                  onChange={(e) => set("attack_vector", e.target.value)}
-                  placeholder={t("findings.fieldAttackVectorPlaceholder")}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="f-impact">{t("findings.fieldBusinessImpact")}</Label>
-                <Textarea
-                  id="f-impact"
-                  value={state.business_impact}
-                  onChange={(e) => set("business_impact", e.target.value)}
-                  placeholder={t("findings.fieldBusinessImpactPlaceholder")}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="f-tech">{t("findings.fieldTechnicalDetails")}</Label>
-                <Textarea
-                  id="f-tech"
-                  value={state.technical_details}
-                  onChange={(e) => set("technical_details", e.target.value)}
-                  placeholder={t("findings.fieldTechnicalDetailsPlaceholder")}
-                />
-              </div>
+              <AiTextarea
+                id="f-root"
+                label={t("findings.fieldRootCause")}
+                value={state.root_cause}
+                onChange={(v) => set("root_cause", v)}
+                placeholder={t("findings.fieldRootCausePlaceholder")}
+              />
+              <AiTextarea
+                id="f-vector"
+                label={t("findings.fieldAttackVector")}
+                value={state.attack_vector}
+                onChange={(v) => set("attack_vector", v)}
+                placeholder={t("findings.fieldAttackVectorPlaceholder")}
+              />
+              <AiTextarea
+                id="f-impact"
+                label={t("findings.fieldBusinessImpact")}
+                value={state.business_impact}
+                onChange={(v) => set("business_impact", v)}
+                placeholder={t("findings.fieldBusinessImpactPlaceholder")}
+              />
+              <AiTextarea
+                id="f-tech"
+                label={t("findings.fieldTechnicalDetails")}
+                value={state.technical_details}
+                onChange={(v) => set("technical_details", v)}
+                placeholder={t("findings.fieldTechnicalDetailsPlaceholder")}
+              />
             </div>
           </Section>
 
@@ -582,15 +611,13 @@ export function FindingForm({
 
           {/* ── Remediation ───────────────────────────────────────────────── */}
           <Section title={t("findings.section.remediation")}>
-            <div className="space-y-1.5">
-              <Label htmlFor="f-fix">{t("findings.fieldFix")}</Label>
-              <Textarea
-                id="f-fix"
-                value={state.fix}
-                onChange={(e) => set("fix", e.target.value)}
-                placeholder={t("findings.fieldFixPlaceholder")}
-              />
-            </div>
+            <AiTextarea
+              id="f-fix"
+              label={t("findings.fieldFix")}
+              value={state.fix}
+              onChange={(v) => set("fix", v)}
+              placeholder={t("findings.fieldFixPlaceholder")}
+            />
             <div className="space-y-1.5">
               <Label htmlFor="f-patch">{t("findings.fieldCodePatch")}</Label>
               <Textarea

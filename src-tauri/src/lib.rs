@@ -5,6 +5,7 @@
 //! passphrase (optionally remembered in the OS keychain). Reports + findings
 //! are authored in the UI and exported to PDF via an embedded Typst template.
 
+mod ai;
 mod commands;
 mod db;
 mod error;
@@ -76,6 +77,11 @@ pub fn run() {
             commands::kb::create_finding_from_kb,
             // scanner importers
             commands::import::import_findings,
+            // AI assistance (v3, opt-in)
+            commands::ai::ai_get_config,
+            commands::ai::ai_set_config,
+            commands::ai::ai_test_connection,
+            commands::ai::ai_complete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
