@@ -137,6 +137,19 @@
     "deleteConfirm": "Delete this finding? This cannot be undone.",
     "createError": "Could not create the finding.",
     "addRow": "Add",
+    "discard": {
+      "title": "Discard unsaved changes?",
+      "body": "You have unsaved changes in this finding. If you close now, they will be lost.",
+      "keepEditing": "Keep editing",
+      "confirm": "Discard changes"
+    },
+    "validation": {
+      "titleRequired": "A title is required.",
+      "cweFormat": "Expected the form CWE-89 (e.g. CWE-79).",
+      "cveFormat": "Expected the form CVE-2024-1234.",
+      "lineNumber": "Enter a positive whole number.",
+      "lineRange": "The end line must be greater than or equal to the start line."
+    },
     "section": {
       "classification": "Classification",
       "cvss": "CVSS score",

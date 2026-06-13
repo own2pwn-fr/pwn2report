@@ -20,6 +20,7 @@ fn row_to_image(row: &Row) -> AppResult<EvidenceImage> {
         mime: row.get("mime")?,
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
+        deleted_at: row.get("deleted_at")?,
     })
 }
 
@@ -78,10 +79,10 @@ pub fn add(
 
 /// Fetch every image across all findings as `(metadata, bytes)` tuples (used by
 /// the sync snapshot — evidence bytes travel in the bundle). Ordered by id for a
-/// deterministic snapshot.
+/// deterministic snapshot. INCLUDES soft-deleted rows so their tombstones travel.
 pub fn list_all_with_data(conn: &Connection) -> AppResult<Vec<(EvidenceImage, Vec<u8>)>> {
     let mut stmt = conn.prepare(
-        "SELECT id, finding_id, caption, mime, data, sort_order, created_at \
+        "SELECT id, finding_id, caption, mime, data, sort_order, created_at, deleted_at \
          FROM evidence_images ORDER BY id",
     )?;
     let mut rows = stmt.query([])?;
@@ -94,7 +95,8 @@ pub fn list_all_with_data(conn: &Connection) -> AppResult<Vec<(EvidenceImage, Ve
     Ok(out)
 }
 
-/// Whether an image with this id exists.
+/// Whether an image with this id exists (INCLUDING soft-deleted tombstones, so
+/// the sync merge applies tombstones rather than re-inserting a deleted image).
 pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
     let found: bool = conn
         .query_row(
@@ -115,9 +117,9 @@ pub fn insert_raw(conn: &Connection, meta: &EvidenceImage, data: &[u8]) -> AppRe
     conn.execute(
         r#"
         INSERT INTO evidence_images
-            (id, finding_id, caption, mime, data, sort_order, created_at)
+            (id, finding_id, caption, mime, data, sort_order, created_at, deleted_at)
         VALUES
-            (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         "#,
         params![
             meta.id,
@@ -127,7 +129,20 @@ pub fn insert_raw(conn: &Connection, meta: &EvidenceImage, data: &[u8]) -> AppRe
             data,
             meta.sort_order,
             meta.created_at,
+            meta.deleted_at,
         ],
+    )?;
+    Ok(())
+}
+
+/// Apply an incoming tombstone to an existing evidence image (sync merge): set
+/// `deleted_at` from the bundle. Evidence images are otherwise immutable, so the
+/// only mutation a merge ever applies is this tombstone. No-op if the row is
+/// already at this state.
+pub fn set_deleted(conn: &Connection, id: &str, deleted_at: Option<&str>) -> AppResult<()> {
+    conn.execute(
+        "UPDATE evidence_images SET deleted_at = ?1 WHERE id = ?2",
+        params![deleted_at, id],
     )?;
     Ok(())
 }
@@ -135,7 +150,21 @@ pub fn insert_raw(conn: &Connection, meta: &EvidenceImage, data: &[u8]) -> AppRe
 /// Fetch a single image's metadata by id.
 pub fn get(conn: &Connection, id: &str) -> AppResult<EvidenceImage> {
     let mut stmt = conn.prepare(
-        "SELECT id, finding_id, caption, mime, sort_order, created_at \
+        "SELECT id, finding_id, caption, mime, sort_order, created_at, deleted_at \
+         FROM evidence_images WHERE id = ?1 AND deleted_at IS NULL",
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    match rows.next()? {
+        Some(row) => row_to_image(row),
+        None => Err(AppError::NotFound),
+    }
+}
+
+/// Fetch an image's metadata by id INCLUDING a soft-deleted tombstone (used by
+/// the sync merge to decide whether to apply an incoming tombstone).
+pub fn get_with_tombstone(conn: &Connection, id: &str) -> AppResult<EvidenceImage> {
+    let mut stmt = conn.prepare(
+        "SELECT id, finding_id, caption, mime, sort_order, created_at, deleted_at \
          FROM evidence_images WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id])?;
@@ -145,11 +174,12 @@ pub fn get(conn: &Connection, id: &str) -> AppResult<EvidenceImage> {
     }
 }
 
-/// List a finding's images ordered by `sort_order` (metadata only).
+/// List a finding's live images ordered by `sort_order` (metadata only).
 pub fn list(conn: &Connection, finding_id: &str) -> AppResult<Vec<EvidenceImage>> {
     let mut stmt = conn.prepare(
-        "SELECT id, finding_id, caption, mime, sort_order, created_at \
-         FROM evidence_images WHERE finding_id = ?1 ORDER BY sort_order, created_at",
+        "SELECT id, finding_id, caption, mime, sort_order, created_at, deleted_at \
+         FROM evidence_images \
+         WHERE finding_id = ?1 AND deleted_at IS NULL ORDER BY sort_order, created_at",
     )?;
     let mut rows = stmt.query(params![finding_id])?;
     let mut out = Vec::new();
@@ -162,7 +192,8 @@ pub fn list(conn: &Connection, finding_id: &str) -> AppResult<Vec<EvidenceImage>
 /// Fetch an image's `(mime, bytes)` by id. Used by the export layer and the
 /// `get_evidence_image` command.
 pub fn get_data(conn: &Connection, id: &str) -> AppResult<(String, Vec<u8>)> {
-    let mut stmt = conn.prepare("SELECT mime, data FROM evidence_images WHERE id = ?1")?;
+    let mut stmt = conn
+        .prepare("SELECT mime, data FROM evidence_images WHERE id = ?1 AND deleted_at IS NULL")?;
     let mut rows = stmt.query(params![id])?;
     match rows.next()? {
         Some(row) => {
@@ -177,7 +208,7 @@ pub fn get_data(conn: &Connection, id: &str) -> AppResult<(String, Vec<u8>)> {
 /// Update an image's caption; returns the updated metadata.
 pub fn update_caption(conn: &Connection, id: &str, caption: &str) -> AppResult<EvidenceImage> {
     let n = conn.execute(
-        "UPDATE evidence_images SET caption = ?1 WHERE id = ?2",
+        "UPDATE evidence_images SET caption = ?1 WHERE id = ?2 AND deleted_at IS NULL",
         params![caption, id],
     )?;
     if n == 0 {
@@ -186,9 +217,16 @@ pub fn update_caption(conn: &Connection, id: &str, caption: &str) -> AppResult<E
     get(conn, id)
 }
 
-/// Delete an image by id.
+/// Soft-delete an image by id: set `deleted_at = now` so the deletion becomes a
+/// tombstone that travels through sync and wins over a peer's live copy, instead
+/// of resurrecting on the next merge. (Evidence images carry no `updated_at`;
+/// `created_at` is fixed, so the tombstone itself is the LWW signal — see merge.)
 pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
-    let n = conn.execute("DELETE FROM evidence_images WHERE id = ?1", params![id])?;
+    let now = now_rfc3339();
+    let n = conn.execute(
+        "UPDATE evidence_images SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if n == 0 {
         return Err(AppError::NotFound);
     }

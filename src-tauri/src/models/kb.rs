@@ -27,6 +27,11 @@ pub struct KbEntry {
     pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
+    /// the IPC payload when absent; carried through the sync bundle so deletes
+    /// propagate across devices. Not surfaced in the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
 }
 
 /// Payload for `kb_create` (and the shape of each bundled-catalog entry).

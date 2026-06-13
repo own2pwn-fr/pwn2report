@@ -30,6 +30,10 @@ pub struct EvidenceImageFull {
     pub mime: String,
     pub sort_order: i64,
     pub created_at: String,
+    /// Soft-delete tombstone marker carried so deletes propagate. Omitted when
+    /// absent (live image).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
     /// Standard-alphabet base64 of the raw image bytes.
     pub data_base64: String,
 }
@@ -44,6 +48,7 @@ impl EvidenceImageFull {
             mime: meta.mime,
             sort_order: meta.sort_order,
             created_at: meta.created_at,
+            deleted_at: meta.deleted_at,
             data_base64: B64.encode(data),
         }
     }
@@ -61,6 +66,7 @@ impl EvidenceImageFull {
             mime: self.mime,
             sort_order: self.sort_order,
             created_at: self.created_at,
+            deleted_at: self.deleted_at,
         };
         Ok((meta, data))
     }
@@ -140,6 +146,7 @@ mod tests {
             methodology: "method".into(),
             created_at: "2026-06-12T10:00:00+00:00".into(),
             updated_at: "2026-06-12T11:00:00+00:00".into(),
+            deleted_at: None,
         }
     }
 
@@ -181,6 +188,7 @@ mod tests {
             tags: vec!["web".into()],
             created_at: "2026-06-12T10:00:00+00:00".into(),
             updated_at: "2026-06-12T10:30:00+00:00".into(),
+            deleted_at: None,
         }
     }
 
@@ -193,6 +201,7 @@ mod tests {
                 mime: "image/png".into(),
                 sort_order: 0,
                 created_at: "2026-06-12T10:05:00+00:00".into(),
+                deleted_at: None,
             },
             &[0x89, 0x50, 0x4e, 0x47, 0x00, 0xff],
         )
@@ -239,6 +248,7 @@ mod tests {
                 mime: "image/jpeg".into(),
                 sort_order: 3,
                 created_at: "2026-06-12T10:00:00+00:00".into(),
+                deleted_at: None,
             },
             &raw,
         );

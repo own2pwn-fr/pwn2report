@@ -57,6 +57,11 @@ pub struct Report {
     pub methodology: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
+    /// the IPC payload when absent; carried through the sync bundle so deletes
+    /// propagate across devices (see `db`/`sync`). Not surfaced in the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
 }
 
 /// Lightweight row for the report list view (with finding count).

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -23,187 +24,36 @@ import {
 import { CvssCalculator } from "@/components/cvss-calculator";
 import { EvidenceGallery } from "@/components/evidence/evidence-gallery";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
+import {
+  emptyState,
+  stateFromFinding,
+  toNewFinding,
+  toPatch,
+  type FindingFormState,
+} from "@/components/findings/finding-form-state";
+import {
+  hasBlockingError,
+  issuesByField,
+  validateFindingForm,
+  type FieldIssue,
+} from "@/lib/finding-validation";
+import { clearDraft, draftKey, loadDraft, saveDraft } from "@/lib/finding-draft";
 import type {
   Confidence,
-  Evidence,
   Finding,
   FindingKind,
   FindingPatch,
   NewFinding,
   Severity,
-  StructuredPoc,
   TriageStatus,
 } from "@/lib/types";
+
+export type { FindingFormState } from "@/components/findings/finding-form-state";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 const CONFIDENCES: Confidence[] = ["high", "medium", "low"];
 const KINDS: FindingKind[] = ["manual", "sast", "iac", "sca", "secret"];
 const TRIAGE: TriageStatus[] = ["open", "acknowledged", "false_positive", "resolved"];
-
-export interface FindingFormState {
-  title: string;
-  severity: Severity;
-  confidence: Confidence;
-  kind: FindingKind;
-  cwe: string;
-  cve: string;
-  cvss_vector: string;
-  cvss_score: number | null;
-  triage_status: TriageStatus;
-  triage_note: string;
-  // description facets
-  summary: string;
-  root_cause: string;
-  attack_vector: string;
-  business_impact: string;
-  technical_details: string;
-  // remediation
-  fix: string;
-  code_patch: string;
-  references: string[];
-  // evidence
-  ev_file: string;
-  ev_start_line: string;
-  ev_end_line: string;
-  ev_snippet: string;
-  // poc
-  poc_scenario: string;
-  poc_steps: string[];
-  poc_payload: string;
-  // misc lists
-  refs: string[];
-  tags: string[];
-}
-
-function emptyState(): FindingFormState {
-  return {
-    title: "",
-    severity: "medium",
-    confidence: "medium",
-    kind: "manual",
-    cwe: "",
-    cve: "",
-    cvss_vector: "",
-    cvss_score: null,
-    triage_status: "open",
-    triage_note: "",
-    summary: "",
-    root_cause: "",
-    attack_vector: "",
-    business_impact: "",
-    technical_details: "",
-    fix: "",
-    code_patch: "",
-    references: [],
-    ev_file: "",
-    ev_start_line: "",
-    ev_end_line: "",
-    ev_snippet: "",
-    poc_scenario: "",
-    poc_steps: [],
-    poc_payload: "",
-    refs: [],
-    tags: [],
-  };
-}
-
-function stateFromFinding(f: Finding): FindingFormState {
-  return {
-    title: f.title,
-    severity: f.severity,
-    confidence: f.confidence,
-    kind: f.kind,
-    cwe: f.cwe ?? "",
-    cve: f.cve ?? "",
-    cvss_vector: f.cvss_vector ?? "",
-    cvss_score: f.cvss_score ?? null,
-    triage_status: f.triage_status,
-    triage_note: f.triage_note ?? "",
-    summary: f.description.summary,
-    root_cause: f.description.root_cause,
-    attack_vector: f.description.attack_vector,
-    business_impact: f.description.business_impact,
-    technical_details: f.description.technical_details,
-    fix: f.remediation.fix,
-    code_patch: f.remediation.code_patch ?? "",
-    references: [...f.remediation.references],
-    ev_file: f.evidence?.file ?? "",
-    ev_start_line: f.evidence?.start_line != null ? String(f.evidence.start_line) : "",
-    ev_end_line: f.evidence?.end_line != null ? String(f.evidence.end_line) : "",
-    ev_snippet: f.evidence?.snippet ?? "",
-    poc_scenario: f.poc?.scenario ?? "",
-    poc_steps: f.poc ? [...f.poc.exploitation_steps] : [],
-    poc_payload: f.poc?.payload ?? "",
-    refs: [...f.refs],
-    tags: [...f.tags],
-  };
-}
-
-function parseLineNumber(value: string): number | null {
-  const n = parseInt(value.trim(), 10);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Build an Evidence object, or null when every field is empty. */
-function buildEvidence(s: FindingFormState): Evidence | null {
-  const file = s.ev_file.trim() || null;
-  const start = parseLineNumber(s.ev_start_line);
-  const end = parseLineNumber(s.ev_end_line);
-  const snippet = s.ev_snippet.trim() || null;
-  if (!file && start == null && end == null && !snippet) return null;
-  return { file, start_line: start, end_line: end, snippet };
-}
-
-/** Build a StructuredPoc, or null when empty. */
-function buildPoc(s: FindingFormState): StructuredPoc | null {
-  const scenario = s.poc_scenario.trim();
-  const steps = s.poc_steps.map((x) => x.trim()).filter(Boolean);
-  const payload = s.poc_payload.trim() || null;
-  if (!scenario && steps.length === 0 && !payload) return null;
-  return { scenario, exploitation_steps: steps, payload };
-}
-
-function cleanList(items: string[]): string[] {
-  return items.map((x) => x.trim()).filter(Boolean);
-}
-
-function commonFields(s: FindingFormState) {
-  return {
-    severity: s.severity,
-    confidence: s.confidence,
-    kind: s.kind,
-    cwe: s.cwe.trim() || null,
-    cve: s.cve.trim() || null,
-    cvss_vector: s.cvss_vector.trim() || null,
-    cvss_score: s.cvss_vector.trim() ? s.cvss_score : null,
-    triage_status: s.triage_status,
-    triage_note: s.triage_note.trim() || null,
-    description: {
-      summary: s.summary,
-      root_cause: s.root_cause,
-      attack_vector: s.attack_vector,
-      business_impact: s.business_impact,
-      technical_details: s.technical_details,
-    },
-    remediation: {
-      fix: s.fix,
-      code_patch: s.code_patch.trim() || null,
-      references: cleanList(s.references),
-    },
-    evidence: buildEvidence(s),
-    poc: buildPoc(s),
-    refs: cleanList(s.refs),
-    tags: cleanList(s.tags),
-  };
-}
-
-function toNewFinding(s: FindingFormState): NewFinding {
-  return { title: s.title.trim(), ...commonFields(s) };
-}
-
-function toPatch(s: FindingFormState): FindingPatch {
-  return { title: s.title.trim(), ...commonFields(s) };
-}
 
 // ── Small presentational helpers ─────────────────────────────────────────────
 
@@ -215,6 +65,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </section>
+  );
+}
+
+/** Inline field error/warning message, wired up via the field's aria-describedby. */
+function FieldError({ id, issue }: { id: string; issue?: FieldIssue }) {
+  const { t } = useTranslation();
+  if (!issue) return null;
+  return (
+    <p
+      id={id}
+      className={
+        issue.severity === "error"
+          ? "text-xs text-destructive"
+          : "text-xs text-amber-600 dark:text-amber-500"
+      }
+    >
+      {t(issue.messageKey)}
+    </p>
   );
 }
 
@@ -256,7 +124,28 @@ function AiTextarea({
   );
 }
 
-/** Add/remove list editor for string[] fields (references, steps, refs, tags). */
+/** A single list row with a stable id (so reordering/deleting keeps focus right). */
+interface ListRow {
+  id: string;
+  value: string;
+}
+
+function newRowId(): string {
+  // crypto.randomUUID is available in modern browsers / the Tauri webview.
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `row-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+}
+
+/**
+ * Add/remove list editor for string[] fields (references, steps, refs, tags).
+ *
+ * Rows are keyed by a stable generated id rather than the array index, so
+ * deleting or reordering a middle row doesn't mis-focus or mis-animate the
+ * remaining rows. The parent still owns a plain string[]; we keep a local
+ * id↔value mapping in sync with it.
+ */
 function ListEditor({
   label,
   items,
@@ -271,19 +160,41 @@ function ListEditor({
   mono?: boolean;
 }) {
   const { t } = useTranslation();
-  const update = (i: number, value: string) =>
-    onChange(items.map((it, idx) => (idx === i ? value : it)));
-  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
-  const add = () => onChange([...items, ""]);
+  // Local rows carry stable ids. We reconcile against the incoming `items` so
+  // external changes (draft restore, AI, reset) stay reflected without losing
+  // the id of rows whose value is unchanged.
+  const [rows, setRows] = useState<ListRow[]>(() =>
+    items.map((value) => ({ id: newRowId(), value })),
+  );
+
+  // Reconcile when `items` changes from outside (length or value mismatch).
+  useEffect(() => {
+    setRows((prev) => {
+      const sameLength = prev.length === items.length;
+      const sameValues = sameLength && prev.every((r, i) => r.value === items[i]);
+      if (sameValues) return prev;
+      return items.map((value, i) => ({ id: prev[i]?.id ?? newRowId(), value }));
+    });
+  }, [items]);
+
+  const commit = (next: ListRow[]) => {
+    setRows(next);
+    onChange(next.map((r) => r.value));
+  };
+
+  const update = (id: string, value: string) =>
+    commit(rows.map((r) => (r.id === id ? { ...r, value } : r)));
+  const remove = (id: string) => commit(rows.filter((r) => r.id !== id));
+  const add = () => commit([...rows, { id: newRowId(), value: "" }]);
 
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
       <div className="space-y-2">
         <AnimatePresence initial={false}>
-          {items.map((item, i) => (
+          {rows.map((row) => (
             <motion.div
-              key={i}
+              key={row.id}
               layout
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -292,16 +203,16 @@ function ListEditor({
               className="flex items-center gap-2"
             >
               <Input
-                value={item}
+                value={row.value}
                 placeholder={placeholder}
-                onChange={(e) => update(i, e.target.value)}
+                onChange={(e) => update(row.id, e.target.value)}
                 className={mono ? "font-mono text-xs" : undefined}
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                onClick={() => remove(i)}
+                onClick={() => remove(row.id)}
                 aria-label={t("common.delete")}
               >
                 <X />
@@ -321,6 +232,7 @@ function ListEditor({
 export function FindingForm({
   open,
   onOpenChange,
+  reportId,
   finding,
   onCreate,
   onUpdate,
@@ -328,342 +240,435 @@ export function FindingForm({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Report this finding belongs to — used to key per-report "new" drafts. */
+  reportId: string;
   finding?: Finding;
   onCreate: (input: NewFinding) => void;
   onUpdate: (id: string, patch: FindingPatch) => void;
   pending: boolean;
 }) {
   const { t } = useTranslation();
-  const [state, setState] = useState<FindingFormState>(
-    finding ? stateFromFinding(finding) : emptyState(),
+
+  // The pristine baseline for dirty-tracking: the finding under edit, or empty.
+  const initial = useMemo<FindingFormState>(
+    () => (finding ? stateFromFinding(finding) : emptyState()),
+    [finding],
+  );
+  const key = useMemo(() => draftKey(finding?.id, reportId), [finding?.id, reportId]);
+
+  // Restore an in-progress draft (if any) over the baseline on first mount.
+  const [state, setState] = useState<FindingFormState>(() => loadDraft(key) ?? initial);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  const set = <K extends keyof FindingFormState>(k: K, value: FindingFormState[K]) =>
+    setState((prev) => ({ ...prev, [k]: value }));
+
+  // Dirty = current state differs from the pristine baseline.
+  const dirty = useMemo(
+    () => JSON.stringify(state) !== JSON.stringify(initial),
+    [state, initial],
   );
 
-  const set = <K extends keyof FindingFormState>(key: K, value: FindingFormState[K]) =>
-    setState((prev) => ({ ...prev, [key]: value }));
+  // Persist / clear the draft as the user types. Only persist when dirty so we
+  // don't leave a stale draft equal to the saved finding.
+  useEffect(() => {
+    if (!open) return;
+    if (dirty) saveDraft(key, state);
+    else clearDraft(key);
+  }, [open, dirty, key, state]);
+
+  // Validation (recomputed cheaply on each render via memo).
+  const issues = useMemo(() => validateFindingForm(state), [state]);
+  const fieldIssues = useMemo(() => issuesByField(issues), [issues]);
+  const blocked = hasBlockingError(issues);
+
+  // Guard the close path: if dirty, ask before discarding.
+  const requestClose = () => {
+    if (dirty) setConfirmDiscard(true);
+    else onOpenChange(false);
+  };
+
+  const confirmDiscardClose = () => {
+    clearDraft(key);
+    setConfirmDiscard(false);
+    onOpenChange(false);
+  };
+
+  // Wrap the success path so callers' close clears the draft. We can't observe
+  // the mutation here, so we clear the draft optimistically on submit; if the
+  // save fails, the form stays open and the next keystroke re-saves the draft.
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    // When the dialog closes after a submit attempt, the parent owns success.
+    if (!open && submittedRef.current) submittedRef.current = false;
+  }, [open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.title.trim()) return;
+    if (blocked) return;
+    submittedRef.current = true;
+    clearDraft(key);
     if (finding) onUpdate(finding.id, toPatch(state));
     else onCreate(toNewFinding(state));
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {finding ? t("findings.editTitle") : t("findings.newTitle")}
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* ── Classification ───────────────────────────────────────────── */}
-          <Section title={t("findings.section.classification")}>
-            <div className="space-y-1.5">
-              <Label htmlFor="f-title">{t("findings.fieldTitle")}</Label>
-              <Input
-                id="f-title"
-                autoFocus
-                value={state.title}
-                onChange={(e) => set("title", e.target.value)}
-                placeholder={t("findings.fieldTitlePlaceholder")}
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) onOpenChange(true);
+          else requestClose();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {finding ? t("findings.editTitle") : t("findings.newTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* ── Classification ───────────────────────────────────────────── */}
+            <Section title={t("findings.section.classification")}>
               <div className="space-y-1.5">
-                <Label>{t("findings.fieldSeverity")}</Label>
-                <Select value={state.severity} onValueChange={(v) => set("severity", v as Severity)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SEVERITIES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {t(`severity.${s}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("findings.fieldConfidence")}</Label>
-                <Select
-                  value={state.confidence}
-                  onValueChange={(v) => set("confidence", v as Confidence)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CONFIDENCES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {t(`confidence.${c}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("findings.fieldKind")}</Label>
-                <Select value={state.kind} onValueChange={(v) => set("kind", v as FindingKind)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {KINDS.map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {t(`kind.${k}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("findings.fieldTriageStatus")}</Label>
-                <Select
-                  value={state.triage_status}
-                  onValueChange={(v) => set("triage_status", v as TriageStatus)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TRIAGE.map((tr) => (
-                      <SelectItem key={tr} value={tr}>
-                        {t(`triage.${tr}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="f-cwe">{t("findings.fieldCwe")}</Label>
+                <Label htmlFor="f-title">{t("findings.fieldTitle")}</Label>
                 <Input
-                  id="f-cwe"
-                  value={state.cwe}
-                  onChange={(e) => set("cwe", e.target.value)}
-                  placeholder={t("findings.fieldCwePlaceholder")}
-                  className="font-mono"
+                  id="f-title"
+                  autoFocus
+                  value={state.title}
+                  onChange={(e) => set("title", e.target.value)}
+                  placeholder={t("findings.fieldTitlePlaceholder")}
+                  required
+                  aria-invalid={fieldIssues["f-title"] ? true : undefined}
+                  aria-describedby={fieldIssues["f-title"] ? "f-title-err" : undefined}
+                />
+                <FieldError id="f-title-err" issue={fieldIssues["f-title"]} />
+              </div>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="space-y-1.5">
+                  <Label>{t("findings.fieldSeverity")}</Label>
+                  <Select value={state.severity} onValueChange={(v) => set("severity", v as Severity)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SEVERITIES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {t(`severity.${s}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("findings.fieldConfidence")}</Label>
+                  <Select
+                    value={state.confidence}
+                    onValueChange={(v) => set("confidence", v as Confidence)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONFIDENCES.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {t(`confidence.${c}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("findings.fieldKind")}</Label>
+                  <Select value={state.kind} onValueChange={(v) => set("kind", v as FindingKind)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KINDS.map((k) => (
+                        <SelectItem key={k} value={k}>
+                          {t(`kind.${k}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("findings.fieldTriageStatus")}</Label>
+                  <Select
+                    value={state.triage_status}
+                    onValueChange={(v) => set("triage_status", v as TriageStatus)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRIAGE.map((tr) => (
+                        <SelectItem key={tr} value={tr}>
+                          {t(`triage.${tr}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="f-cwe">{t("findings.fieldCwe")}</Label>
+                  <Input
+                    id="f-cwe"
+                    value={state.cwe}
+                    onChange={(e) => set("cwe", e.target.value)}
+                    placeholder={t("findings.fieldCwePlaceholder")}
+                    className="font-mono"
+                    aria-invalid={fieldIssues["f-cwe"] ? true : undefined}
+                    aria-describedby={fieldIssues["f-cwe"] ? "f-cwe-err" : undefined}
+                  />
+                  <FieldError id="f-cwe-err" issue={fieldIssues["f-cwe"]} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="f-cve">{t("findings.fieldCve")}</Label>
+                  <Input
+                    id="f-cve"
+                    value={state.cve}
+                    onChange={(e) => set("cve", e.target.value)}
+                    placeholder={t("findings.fieldCvePlaceholder")}
+                    className="font-mono"
+                    aria-invalid={fieldIssues["f-cve"] ? true : undefined}
+                    aria-describedby={fieldIssues["f-cve"] ? "f-cve-err" : undefined}
+                  />
+                  <FieldError id="f-cve-err" issue={fieldIssues["f-cve"]} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="f-triage-note">{t("findings.fieldTriageNote")}</Label>
+                <Textarea
+                  id="f-triage-note"
+                  rows={2}
+                  value={state.triage_note}
+                  onChange={(e) => set("triage_note", e.target.value)}
+                  placeholder={t("findings.fieldTriageNotePlaceholder")}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="f-cve">{t("findings.fieldCve")}</Label>
-                <Input
-                  id="f-cve"
-                  value={state.cve}
-                  onChange={(e) => set("cve", e.target.value)}
-                  placeholder={t("findings.fieldCvePlaceholder")}
-                  className="font-mono"
+            </Section>
+
+            {/* ── CVSS ──────────────────────────────────────────────────────── */}
+            <Section title={t("findings.section.cvss")}>
+              <CvssCalculator
+                vector={state.cvss_vector || null}
+                onChange={({ vector, score }) => {
+                  setState((prev) => ({ ...prev, cvss_vector: vector, cvss_score: score }));
+                }}
+              />
+            </Section>
+
+            {/* ── Description ───────────────────────────────────────────────── */}
+            <Section title={t("findings.section.description")}>
+              <AiTextarea
+                id="f-summary"
+                label={t("findings.fieldSummary")}
+                value={state.summary}
+                onChange={(v) => set("summary", v)}
+                placeholder={t("findings.fieldSummaryPlaceholder")}
+              />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <AiTextarea
+                  id="f-root"
+                  label={t("findings.fieldRootCause")}
+                  value={state.root_cause}
+                  onChange={(v) => set("root_cause", v)}
+                  placeholder={t("findings.fieldRootCausePlaceholder")}
+                />
+                <AiTextarea
+                  id="f-vector"
+                  label={t("findings.fieldAttackVector")}
+                  value={state.attack_vector}
+                  onChange={(v) => set("attack_vector", v)}
+                  placeholder={t("findings.fieldAttackVectorPlaceholder")}
+                />
+                <AiTextarea
+                  id="f-impact"
+                  label={t("findings.fieldBusinessImpact")}
+                  value={state.business_impact}
+                  onChange={(v) => set("business_impact", v)}
+                  placeholder={t("findings.fieldBusinessImpactPlaceholder")}
+                />
+                <AiTextarea
+                  id="f-tech"
+                  label={t("findings.fieldTechnicalDetails")}
+                  value={state.technical_details}
+                  onChange={(v) => set("technical_details", v)}
+                  placeholder={t("findings.fieldTechnicalDetailsPlaceholder")}
                 />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="f-triage-note">{t("findings.fieldTriageNote")}</Label>
-              <Textarea
-                id="f-triage-note"
-                rows={2}
-                value={state.triage_note}
-                onChange={(e) => set("triage_note", e.target.value)}
-                placeholder={t("findings.fieldTriageNotePlaceholder")}
-              />
-            </div>
-          </Section>
+            </Section>
 
-          {/* ── CVSS ──────────────────────────────────────────────────────── */}
-          <Section title={t("findings.section.cvss")}>
-            <CvssCalculator
-              vector={state.cvss_vector || null}
-              onChange={({ vector, score }) => {
-                setState((prev) => ({ ...prev, cvss_vector: vector, cvss_score: score }));
-              }}
-            />
-          </Section>
-
-          {/* ── Description ───────────────────────────────────────────────── */}
-          <Section title={t("findings.section.description")}>
-            <AiTextarea
-              id="f-summary"
-              label={t("findings.fieldSummary")}
-              value={state.summary}
-              onChange={(v) => set("summary", v)}
-              placeholder={t("findings.fieldSummaryPlaceholder")}
-            />
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <AiTextarea
-                id="f-root"
-                label={t("findings.fieldRootCause")}
-                value={state.root_cause}
-                onChange={(v) => set("root_cause", v)}
-                placeholder={t("findings.fieldRootCausePlaceholder")}
-              />
-              <AiTextarea
-                id="f-vector"
-                label={t("findings.fieldAttackVector")}
-                value={state.attack_vector}
-                onChange={(v) => set("attack_vector", v)}
-                placeholder={t("findings.fieldAttackVectorPlaceholder")}
-              />
-              <AiTextarea
-                id="f-impact"
-                label={t("findings.fieldBusinessImpact")}
-                value={state.business_impact}
-                onChange={(v) => set("business_impact", v)}
-                placeholder={t("findings.fieldBusinessImpactPlaceholder")}
-              />
-              <AiTextarea
-                id="f-tech"
-                label={t("findings.fieldTechnicalDetails")}
-                value={state.technical_details}
-                onChange={(v) => set("technical_details", v)}
-                placeholder={t("findings.fieldTechnicalDetailsPlaceholder")}
-              />
-            </div>
-          </Section>
-
-          {/* ── Evidence ──────────────────────────────────────────────────── */}
-          <Section title={t("findings.section.evidence")}>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="space-y-1.5 md:col-span-1">
-                <Label htmlFor="f-ev-file">{t("findings.fieldEvidenceFile")}</Label>
-                <Input
-                  id="f-ev-file"
-                  value={state.ev_file}
-                  onChange={(e) => set("ev_file", e.target.value)}
-                  placeholder={t("findings.fieldEvidenceFilePlaceholder")}
+            {/* ── Evidence ──────────────────────────────────────────────────── */}
+            <Section title={t("findings.section.evidence")}>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label htmlFor="f-ev-file">{t("findings.fieldEvidenceFile")}</Label>
+                  <Input
+                    id="f-ev-file"
+                    value={state.ev_file}
+                    onChange={(e) => set("ev_file", e.target.value)}
+                    placeholder={t("findings.fieldEvidenceFilePlaceholder")}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="f-ev-start">{t("findings.fieldEvidenceStartLine")}</Label>
+                  <Input
+                    id="f-ev-start"
+                    type="number"
+                    min={0}
+                    value={state.ev_start_line}
+                    onChange={(e) => set("ev_start_line", e.target.value)}
+                    className="font-mono"
+                    aria-invalid={fieldIssues["f-ev-start"] ? true : undefined}
+                    aria-describedby={fieldIssues["f-ev-start"] ? "f-ev-start-err" : undefined}
+                  />
+                  <FieldError id="f-ev-start-err" issue={fieldIssues["f-ev-start"]} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="f-ev-end">{t("findings.fieldEvidenceEndLine")}</Label>
+                  <Input
+                    id="f-ev-end"
+                    type="number"
+                    min={0}
+                    value={state.ev_end_line}
+                    onChange={(e) => set("ev_end_line", e.target.value)}
+                    className="font-mono"
+                    aria-invalid={fieldIssues["f-ev-end"] ? true : undefined}
+                    aria-describedby={fieldIssues["f-ev-end"] ? "f-ev-end-err" : undefined}
+                  />
+                  <FieldError id="f-ev-end-err" issue={fieldIssues["f-ev-end"]} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="f-ev-snippet">{t("findings.fieldEvidenceSnippet")}</Label>
+                <Textarea
+                  id="f-ev-snippet"
+                  value={state.ev_snippet}
+                  onChange={(e) => set("ev_snippet", e.target.value)}
+                  placeholder={t("findings.fieldEvidenceSnippetPlaceholder")}
                   className="font-mono text-xs"
                 />
               </div>
+            </Section>
+
+            {/* ── Evidence images ───────────────────────────────────────────── */}
+            <Section title={t("evidence.section")}>
+              {finding ? (
+                <EvidenceGallery findingId={finding.id} />
+              ) : (
+                <p className="text-sm text-muted-foreground">{t("evidence.saveFirst")}</p>
+              )}
+            </Section>
+
+            {/* ── Proof of concept ──────────────────────────────────────────── */}
+            <Section title={t("findings.section.poc")}>
               <div className="space-y-1.5">
-                <Label htmlFor="f-ev-start">{t("findings.fieldEvidenceStartLine")}</Label>
-                <Input
-                  id="f-ev-start"
-                  type="number"
-                  min={0}
-                  value={state.ev_start_line}
-                  onChange={(e) => set("ev_start_line", e.target.value)}
-                  className="font-mono"
+                <Label htmlFor="f-poc-scenario">{t("findings.fieldPocScenario")}</Label>
+                <Textarea
+                  id="f-poc-scenario"
+                  value={state.poc_scenario}
+                  onChange={(e) => set("poc_scenario", e.target.value)}
+                  placeholder={t("findings.fieldPocScenarioPlaceholder")}
                 />
               </div>
+              <ListEditor
+                label={t("findings.fieldPocSteps")}
+                items={state.poc_steps}
+                placeholder={t("findings.fieldPocStepsPlaceholder")}
+                onChange={(next) => set("poc_steps", next)}
+              />
               <div className="space-y-1.5">
-                <Label htmlFor="f-ev-end">{t("findings.fieldEvidenceEndLine")}</Label>
-                <Input
-                  id="f-ev-end"
-                  type="number"
-                  min={0}
-                  value={state.ev_end_line}
-                  onChange={(e) => set("ev_end_line", e.target.value)}
-                  className="font-mono"
+                <Label htmlFor="f-poc-payload">{t("findings.fieldPocPayload")}</Label>
+                <Textarea
+                  id="f-poc-payload"
+                  value={state.poc_payload}
+                  onChange={(e) => set("poc_payload", e.target.value)}
+                  placeholder={t("findings.fieldPocPayloadPlaceholder")}
+                  className="font-mono text-xs"
                 />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="f-ev-snippet">{t("findings.fieldEvidenceSnippet")}</Label>
-              <Textarea
-                id="f-ev-snippet"
-                value={state.ev_snippet}
-                onChange={(e) => set("ev_snippet", e.target.value)}
-                placeholder={t("findings.fieldEvidenceSnippetPlaceholder")}
-                className="font-mono text-xs"
+            </Section>
+
+            {/* ── Remediation ───────────────────────────────────────────────── */}
+            <Section title={t("findings.section.remediation")}>
+              <AiTextarea
+                id="f-fix"
+                label={t("findings.fieldFix")}
+                value={state.fix}
+                onChange={(v) => set("fix", v)}
+                placeholder={t("findings.fieldFixPlaceholder")}
               />
-            </div>
-          </Section>
-
-          {/* ── Evidence images ───────────────────────────────────────────── */}
-          <Section title={t("evidence.section")}>
-            {finding ? (
-              <EvidenceGallery findingId={finding.id} />
-            ) : (
-              <p className="text-sm text-muted-foreground">{t("evidence.saveFirst")}</p>
-            )}
-          </Section>
-
-          {/* ── Proof of concept ──────────────────────────────────────────── */}
-          <Section title={t("findings.section.poc")}>
-            <div className="space-y-1.5">
-              <Label htmlFor="f-poc-scenario">{t("findings.fieldPocScenario")}</Label>
-              <Textarea
-                id="f-poc-scenario"
-                value={state.poc_scenario}
-                onChange={(e) => set("poc_scenario", e.target.value)}
-                placeholder={t("findings.fieldPocScenarioPlaceholder")}
+              <div className="space-y-1.5">
+                <Label htmlFor="f-patch">{t("findings.fieldCodePatch")}</Label>
+                <Textarea
+                  id="f-patch"
+                  value={state.code_patch}
+                  onChange={(e) => set("code_patch", e.target.value)}
+                  placeholder={t("findings.fieldCodePatchPlaceholder")}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <ListEditor
+                label={t("findings.fieldRemediationRefs")}
+                items={state.references}
+                placeholder={t("findings.fieldRefPlaceholder")}
+                onChange={(next) => set("references", next)}
+                mono
               />
-            </div>
-            <ListEditor
-              label={t("findings.fieldPocSteps")}
-              items={state.poc_steps}
-              placeholder={t("findings.fieldPocStepsPlaceholder")}
-              onChange={(next) => set("poc_steps", next)}
-            />
-            <div className="space-y-1.5">
-              <Label htmlFor="f-poc-payload">{t("findings.fieldPocPayload")}</Label>
-              <Textarea
-                id="f-poc-payload"
-                value={state.poc_payload}
-                onChange={(e) => set("poc_payload", e.target.value)}
-                placeholder={t("findings.fieldPocPayloadPlaceholder")}
-                className="font-mono text-xs"
+            </Section>
+
+            {/* ── References & tags ─────────────────────────────────────────── */}
+            <Section title={t("findings.section.metadata")}>
+              <ListEditor
+                label={t("findings.fieldRefs")}
+                items={state.refs}
+                placeholder={t("findings.fieldRefPlaceholder")}
+                onChange={(next) => set("refs", next)}
+                mono
               />
-            </div>
-          </Section>
-
-          {/* ── Remediation ───────────────────────────────────────────────── */}
-          <Section title={t("findings.section.remediation")}>
-            <AiTextarea
-              id="f-fix"
-              label={t("findings.fieldFix")}
-              value={state.fix}
-              onChange={(v) => set("fix", v)}
-              placeholder={t("findings.fieldFixPlaceholder")}
-            />
-            <div className="space-y-1.5">
-              <Label htmlFor="f-patch">{t("findings.fieldCodePatch")}</Label>
-              <Textarea
-                id="f-patch"
-                value={state.code_patch}
-                onChange={(e) => set("code_patch", e.target.value)}
-                placeholder={t("findings.fieldCodePatchPlaceholder")}
-                className="font-mono text-xs"
+              <ListEditor
+                label={t("findings.fieldTags")}
+                items={state.tags}
+                placeholder={t("findings.fieldTagPlaceholder")}
+                onChange={(next) => set("tags", next)}
               />
-            </div>
-            <ListEditor
-              label={t("findings.fieldRemediationRefs")}
-              items={state.references}
-              placeholder={t("findings.fieldRefPlaceholder")}
-              onChange={(next) => set("references", next)}
-              mono
-            />
-          </Section>
+            </Section>
 
-          {/* ── References & tags ─────────────────────────────────────────── */}
-          <Section title={t("findings.section.metadata")}>
-            <ListEditor
-              label={t("findings.fieldRefs")}
-              items={state.refs}
-              placeholder={t("findings.fieldRefPlaceholder")}
-              onChange={(next) => set("refs", next)}
-              mono
-            />
-            <ListEditor
-              label={t("findings.fieldTags")}
-              items={state.tags}
-              placeholder={t("findings.fieldTagPlaceholder")}
-              onChange={(next) => set("tags", next)}
-            />
-          </Section>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={requestClose}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" variant="brand" disabled={pending || blocked}>
+                {pending ? t("common.saving") : t("common.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
+      {/* Discard-confirmation guard for unsaved changes. */}
+      <Dialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("findings.discard.title")}</DialogTitle>
+            <DialogDescription>{t("findings.discard.body")}</DialogDescription>
+          </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              {t("common.cancel")}
+            <Button type="button" variant="ghost" onClick={() => setConfirmDiscard(false)}>
+              {t("findings.discard.keepEditing")}
             </Button>
-            <Button type="submit" variant="brand" disabled={pending || !state.title.trim()}>
-              {pending ? t("common.saving") : t("common.save")}
+            <Button type="button" variant="destructive" onClick={confirmDiscardClose}>
+              {t("findings.discard.confirm")}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

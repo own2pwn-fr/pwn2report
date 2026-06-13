@@ -1,6 +1,7 @@
 //! Knowledge-base CRUD. Reuses the finding enum/JSON column helpers so the KB
 //! stores templates in exactly the same on-disk shape as report findings.
 
+use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
 
@@ -35,12 +36,15 @@ fn row_to_kb(row: &Row) -> AppResult<KbEntry> {
         tags: json_vec(row.get("tags")?)?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        deleted_at: row.get("deleted_at")?,
     })
 }
 
-/// List all KB entries, alphabetical by title.
+/// List all live KB entries, alphabetical by title.
 pub fn list(conn: &Connection) -> AppResult<Vec<KbEntry>> {
-    let mut stmt = conn.prepare("SELECT * FROM kb_entries ORDER BY title COLLATE NOCASE")?;
+    let mut stmt = conn.prepare(
+        "SELECT * FROM kb_entries WHERE deleted_at IS NULL ORDER BY title COLLATE NOCASE",
+    )?;
     let mut rows = stmt.query([])?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
@@ -50,7 +54,8 @@ pub fn list(conn: &Connection) -> AppResult<Vec<KbEntry>> {
 }
 
 /// Fetch all KB entries as full rows (used by the sync snapshot). Ordered by id
-/// for a deterministic snapshot.
+/// for a deterministic snapshot. INCLUDES soft-deleted rows so their tombstones
+/// travel in the bundle.
 pub fn list_all(conn: &Connection) -> AppResult<Vec<KbEntry>> {
     let mut stmt = conn.prepare("SELECT * FROM kb_entries ORDER BY id")?;
     let mut rows = stmt.query([])?;
@@ -61,7 +66,8 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<KbEntry>> {
     Ok(out)
 }
 
-/// Whether a KB entry with this id exists.
+/// Whether a KB entry with this id exists (INCLUDING soft-deleted tombstones,
+/// so the sync merge applies LWW rather than re-inserting a deleted row).
 pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
     let found: bool = conn
         .query_row(
@@ -81,9 +87,10 @@ pub fn insert_raw(conn: &Connection, e: &KbEntry) -> AppResult<()> {
         r#"
         INSERT INTO kb_entries
             (id, title, severity, confidence, kind, cwe, cve, cvss_vector,
-             cvss_score, description, remediation, tags, created_at, updated_at)
+             cvss_score, description, remediation, tags, created_at, updated_at,
+             deleted_at)
         VALUES
-            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
         "#,
         params![
             e.id,
@@ -100,6 +107,7 @@ pub fn insert_raw(conn: &Connection, e: &KbEntry) -> AppResult<()> {
             serde_json::to_string(&e.tags)?,
             e.created_at,
             e.updated_at,
+            e.deleted_at,
         ],
     )?;
     Ok(())
@@ -113,7 +121,8 @@ pub fn update_raw(conn: &Connection, e: &KbEntry) -> AppResult<()> {
         UPDATE kb_entries SET
             title = ?2, severity = ?3, confidence = ?4, kind = ?5, cwe = ?6,
             cve = ?7, cvss_vector = ?8, cvss_score = ?9, description = ?10,
-            remediation = ?11, tags = ?12, created_at = ?13, updated_at = ?14
+            remediation = ?11, tags = ?12, created_at = ?13, updated_at = ?14,
+            deleted_at = ?15
         WHERE id = ?1
         "#,
         params![
@@ -131,13 +140,25 @@ pub fn update_raw(conn: &Connection, e: &KbEntry) -> AppResult<()> {
             serde_json::to_string(&e.tags)?,
             e.created_at,
             e.updated_at,
+            e.deleted_at,
         ],
     )?;
     Ok(())
 }
 
-/// Fetch a single KB entry by id.
+/// Fetch a single live KB entry by id (excludes soft-deleted tombstones).
 pub fn get(conn: &Connection, id: &str) -> AppResult<KbEntry> {
+    let mut stmt = conn.prepare("SELECT * FROM kb_entries WHERE id = ?1 AND deleted_at IS NULL")?;
+    let mut rows = stmt.query(params![id])?;
+    match rows.next()? {
+        Some(row) => row_to_kb(row),
+        None => Err(AppError::NotFound),
+    }
+}
+
+/// Fetch a KB entry by id INCLUDING a soft-deleted tombstone (used by the sync
+/// merge to read the local `updated_at`/`deleted_at` for LWW).
+pub fn get_raw(conn: &Connection, id: &str) -> AppResult<KbEntry> {
     let mut stmt = conn.prepare("SELECT * FROM kb_entries WHERE id = ?1")?;
     let mut rows = stmt.query(params![id])?;
     match rows.next()? {
@@ -190,95 +211,87 @@ pub fn update(conn: &Connection, id: &str, patch: KbEntryPatch) -> AppResult<KbE
     let _ = get(conn, id)?; // NotFound if absent.
     let now = now_rfc3339();
 
+    // Single atomic UPDATE built from the present patch fields + updated_at (see
+    // findings::update for the rationale). Double-Option fields map Some(None)
+    // -> SQL NULL, Some(Some(v)) -> v.
+    let mut sets: Vec<&str> = vec!["updated_at = ?"];
+    let mut vals: Vec<Box<dyn ToSql>> = vec![Box::new(now)];
+
     if let Some(title) = patch.title {
-        conn.execute(
-            "UPDATE kb_entries SET title = ?1 WHERE id = ?2",
-            params![title, id],
-        )?;
+        sets.push("title = ?");
+        vals.push(Box::new(title));
     }
     if let Some(sev) = patch.severity {
-        conn.execute(
-            "UPDATE kb_entries SET severity = ?1 WHERE id = ?2",
-            params![sev.as_str(), id],
-        )?;
+        sets.push("severity = ?");
+        vals.push(Box::new(sev.as_str().to_string()));
     }
     if let Some(c) = patch.confidence {
-        conn.execute(
-            "UPDATE kb_entries SET confidence = ?1 WHERE id = ?2",
-            params![confidence_str(c), id],
-        )?;
+        sets.push("confidence = ?");
+        vals.push(Box::new(confidence_str(c).to_string()));
     }
     if let Some(k) = patch.kind {
-        conn.execute(
-            "UPDATE kb_entries SET kind = ?1 WHERE id = ?2",
-            params![kind_str(k), id],
-        )?;
+        sets.push("kind = ?");
+        vals.push(Box::new(kind_str(k).to_string()));
     }
     if let Some(cwe) = patch.cwe {
-        conn.execute(
-            "UPDATE kb_entries SET cwe = ?1 WHERE id = ?2",
-            params![cwe, id],
-        )?;
+        sets.push("cwe = ?");
+        vals.push(Box::new(cwe));
     }
     if let Some(cve) = patch.cve {
-        conn.execute(
-            "UPDATE kb_entries SET cve = ?1 WHERE id = ?2",
-            params![cve, id],
-        )?;
+        sets.push("cve = ?");
+        vals.push(Box::new(cve));
     }
     if let Some(v) = patch.cvss_vector {
-        conn.execute(
-            "UPDATE kb_entries SET cvss_vector = ?1 WHERE id = ?2",
-            params![v, id],
-        )?;
+        sets.push("cvss_vector = ?");
+        vals.push(Box::new(v));
     }
     if let Some(score) = patch.cvss_score {
-        conn.execute(
-            "UPDATE kb_entries SET cvss_score = ?1 WHERE id = ?2",
-            params![score, id],
-        )?;
+        sets.push("cvss_score = ?");
+        vals.push(Box::new(score));
     }
     if let Some(desc) = patch.description {
-        conn.execute(
-            "UPDATE kb_entries SET description = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&desc)?, id],
-        )?;
+        sets.push("description = ?");
+        vals.push(Box::new(serde_json::to_string(&desc)?));
     }
     if let Some(rem) = patch.remediation {
-        conn.execute(
-            "UPDATE kb_entries SET remediation = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&rem)?, id],
-        )?;
+        sets.push("remediation = ?");
+        vals.push(Box::new(serde_json::to_string(&rem)?));
     }
     if let Some(tags) = patch.tags {
-        conn.execute(
-            "UPDATE kb_entries SET tags = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&tags)?, id],
-        )?;
+        sets.push("tags = ?");
+        vals.push(Box::new(serde_json::to_string(&tags)?));
     }
 
-    conn.execute(
-        "UPDATE kb_entries SET updated_at = ?1 WHERE id = ?2",
-        params![now, id],
-    )?;
+    let sql = format!("UPDATE kb_entries SET {} WHERE id = ?", sets.join(", "));
+    vals.push(Box::new(id.to_string()));
+    let bound: Vec<&dyn ToSql> = vals.iter().map(|b| b.as_ref()).collect();
+    conn.execute(&sql, bound.as_slice())?;
 
     get(conn, id)
 }
 
-/// Delete a KB entry by id.
+/// Soft-delete a KB entry by id: set `deleted_at = now` and bump `updated_at` so
+/// the deletion becomes a tombstone that travels through sync and wins LWW
+/// instead of resurrecting from a peer.
 pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
-    let n = conn.execute("DELETE FROM kb_entries WHERE id = ?1", params![id])?;
+    let now = now_rfc3339();
+    let n = conn.execute(
+        "UPDATE kb_entries SET deleted_at = ?1, updated_at = ?1 \
+         WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if n == 0 {
         return Err(AppError::NotFound);
     }
     Ok(())
 }
 
-/// True if a KB entry with this exact title already exists.
+/// True if a LIVE KB entry with this exact title already exists (a soft-deleted
+/// entry does not block reusing its title).
 pub fn title_exists(conn: &Connection, title: &str) -> AppResult<bool> {
     let found: bool = conn
         .query_row(
-            "SELECT 1 FROM kb_entries WHERE title = ?1 LIMIT 1",
+            "SELECT 1 FROM kb_entries WHERE title = ?1 AND deleted_at IS NULL LIMIT 1",
             params![title],
             |_| Ok(true),
         )

@@ -5,6 +5,20 @@
 //! two devices that each merge the other's bundle converge on the same state
 //! regardless of merge order (the row with the latest `updated_at` always wins).
 //!
+//! **Tombstones**: a delete is a soft-delete (`deleted_at` set), not a row
+//! removal, so it travels in the bundle as a normal row carrying `deleted_at`
+//! plus a bumped `updated_at`. LWW therefore treats a delete like any other
+//! edit: if the incoming row is newer it wins — soft-deleting locally — and an
+//! older live row can never resurrect a row a peer already deleted. Tombstones
+//! are applied via the same `update_raw`/`insert_raw` paths (which now persist
+//! `deleted_at`), so no special-casing is needed for reports/findings/kb.
+//!
+//! Evidence images are immutable bytes, so the only mutation a merge applies to
+//! an existing image is its tombstone; a brand-new image is inserted (carrying
+//! whatever `deleted_at` it already had). Since images have no `updated_at`, the
+//! tombstone is monotonic — once set it stays set (a live incoming copy never
+//! un-deletes a locally-tombstoned image).
+//!
 //! Ordering matters for foreign keys: **reports → findings → kb_entries →
 //! evidence_images**. The whole merge runs in a single transaction so a failure
 //! leaves the vault untouched.
@@ -26,8 +40,13 @@ pub struct SyncSummary {
     pub kb_added: usize,
     pub kb_updated: usize,
     pub images_added: usize,
+    /// Incoming tombstones that won LWW and soft-deleted a local row (across all
+    /// tables). A subset of the "updated" work, surfaced separately so the UI can
+    /// report "N items removed by sync".
+    pub deleted: usize,
     /// Rows skipped: incoming row not newer (LWW lost), or an evidence image
-    /// whose parent finding is absent, or an evidence image that already exists.
+    /// whose parent finding is absent, or an evidence image already at the
+    /// incoming state.
     pub skipped: usize,
 }
 
@@ -55,13 +74,18 @@ pub fn merge(conn: &mut Connection, bundle: SyncBundle) -> AppResult<SyncSummary
     // coercion at every call site.
     let c: &Connection = &tx;
 
-    // 1. Reports (parents of findings).
+    // 1. Reports (parents of findings). `get_raw`/`exists` see tombstones too,
+    //    so a locally-deleted row is updated via LWW rather than re-inserted.
     for r in &bundle.reports {
         if db::reports::exists(c, &r.id)? {
-            let local = db::reports::get(c, &r.id)?;
+            let local = db::reports::get_raw(c, &r.id)?;
             if incoming_is_newer(&r.updated_at, &local.updated_at) {
                 db::reports::update_raw(c, r)?;
                 summary.reports_updated += 1;
+                // Count a fresh tombstone (live -> deleted) as a deletion.
+                if local.deleted_at.is_none() && r.deleted_at.is_some() {
+                    summary.deleted += 1;
+                }
             } else {
                 summary.skipped += 1;
             }
@@ -74,10 +98,13 @@ pub fn merge(conn: &mut Connection, bundle: SyncBundle) -> AppResult<SyncSummary
     // 2. Findings (parents of evidence images; require their report present).
     for f in &bundle.findings {
         if db::findings::exists(c, &f.id)? {
-            let local = db::findings::get(c, &f.id)?;
+            let local = db::findings::get_raw(c, &f.id)?;
             if incoming_is_newer(&f.updated_at, &local.updated_at) {
                 db::findings::update_raw(c, f)?;
                 summary.findings_updated += 1;
+                if local.deleted_at.is_none() && f.deleted_at.is_some() {
+                    summary.deleted += 1;
+                }
             } else {
                 summary.skipped += 1;
             }
@@ -97,10 +124,13 @@ pub fn merge(conn: &mut Connection, bundle: SyncBundle) -> AppResult<SyncSummary
     // 3. KB entries (no FKs).
     for e in &bundle.kb_entries {
         if db::kb::exists(c, &e.id)? {
-            let local = db::kb::get(c, &e.id)?;
+            let local = db::kb::get_raw(c, &e.id)?;
             if incoming_is_newer(&e.updated_at, &local.updated_at) {
                 db::kb::update_raw(c, e)?;
                 summary.kb_updated += 1;
+                if local.deleted_at.is_none() && e.deleted_at.is_some() {
+                    summary.deleted += 1;
+                }
             } else {
                 summary.skipped += 1;
             }
@@ -110,12 +140,26 @@ pub fn merge(conn: &mut Connection, bundle: SyncBundle) -> AppResult<SyncSummary
         }
     }
 
-    // 4. Evidence images: immutable — INSERT if absent, else skip. Also skip an
-    //    image whose parent finding is missing after the findings merge.
+    // 4. Evidence images: immutable bytes. If absent, INSERT (carrying any
+    //    tombstone it already had). If present, the only mutation is a tombstone:
+    //    a deleted incoming copy soft-deletes the local one (monotonic — a live
+    //    incoming copy never un-deletes). Skip an image whose parent finding is
+    //    absent after the findings merge.
     for img in bundle.evidence_images {
         let (meta, data) = img.into_parts()?;
         if db::evidence::exists(c, &meta.id)? {
-            summary.skipped += 1;
+            // Apply an incoming tombstone if the local row is still live.
+            if meta.deleted_at.is_some() {
+                let local = db::evidence::get_with_tombstone(c, &meta.id)?;
+                if local.deleted_at.is_none() {
+                    db::evidence::set_deleted(c, &meta.id, meta.deleted_at.as_deref())?;
+                    summary.deleted += 1;
+                } else {
+                    summary.skipped += 1;
+                }
+            } else {
+                summary.skipped += 1;
+            }
             continue;
         }
         if !db::findings::exists(c, &meta.finding_id)? {

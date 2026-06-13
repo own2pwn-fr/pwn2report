@@ -165,6 +165,91 @@ fn e2e_sync_roundtrip_between_two_vaults() {
     let _ = std::fs::remove_file(&dst_path);
 }
 
+/// A soft-delete on one vault propagates as a tombstone through sync and removes
+/// the row on the peer — and a later re-merge of the peer's *pre-delete* bundle
+/// does NOT resurrect it (LWW: the tombstone is newer).
+#[test]
+fn e2e_soft_delete_tombstone_propagates_and_blocks_resurrection() {
+    // Source vault with a report + finding; snapshot its PRE-delete state.
+    let src_path = tmp("tomb-src");
+    let src = connection::create_encrypted(&src_path, "pp").unwrap();
+    let (rid, fid) = seed_report_with_finding(&src);
+    let pre_delete = SyncBundle::snapshot(&src).unwrap();
+
+    // Destination vault that already has the data (simulate a prior sync).
+    let dst_path = tmp("tomb-dst");
+    let mut dst = connection::create_encrypted(&dst_path, "other").unwrap();
+    merge(
+        &mut dst,
+        SyncBundle::from_json(&pre_delete.to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(db::reports::list(&dst).unwrap().len(), 1);
+
+    // Delete the finding on the source (soft-delete -> tombstone), then snapshot.
+    db::findings::delete(&src, &fid).unwrap();
+    assert!(db::findings::list(&src, &rid).unwrap().is_empty());
+    let post_delete = SyncBundle::snapshot(&src).unwrap();
+
+    // Merge the tombstone into dst: the finding is removed there too.
+    let s = merge(
+        &mut dst,
+        SyncBundle::from_json(&post_delete.to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(s.deleted, 1, "one tombstone should have been applied");
+    assert!(db::findings::list(&dst, &rid).unwrap().is_empty());
+
+    // Re-merging the STALE pre-delete bundle must NOT resurrect the finding
+    // (its older updated_at loses LWW against the tombstone).
+    let s2 = merge(
+        &mut dst,
+        SyncBundle::from_json(&pre_delete.to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(s2.findings_updated, 0);
+    assert!(
+        db::findings::list(&dst, &rid).unwrap().is_empty(),
+        "stale bundle must not resurrect a deleted finding"
+    );
+
+    let _ = std::fs::remove_file(&src_path);
+    let _ = std::fs::remove_file(&dst_path);
+}
+
+/// An evidence-image soft-delete travels as a tombstone and removes the image on
+/// the peer (images are immutable, so the tombstone is the only mutation merged).
+#[test]
+fn e2e_evidence_tombstone_propagates() {
+    let src_path = tmp("img-tomb-src");
+    let src = connection::create_encrypted(&src_path, "pp").unwrap();
+    let (_rid, fid) = seed_report_with_finding(&src);
+    let img = db::evidence::add(&src, &fid, "shot", "image/png", &png_1x1()).unwrap();
+
+    // Peer gets the live image first.
+    let dst_path = tmp("img-tomb-dst");
+    let mut dst = connection::create_encrypted(&dst_path, "other").unwrap();
+    merge(
+        &mut dst,
+        SyncBundle::from_json(&SyncBundle::snapshot(&src).unwrap().to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(db::evidence::list(&dst, &fid).unwrap().len(), 1);
+
+    // Delete the image on src, then sync the tombstone to dst.
+    db::evidence::delete(&src, &img.id).unwrap();
+    let s = merge(
+        &mut dst,
+        SyncBundle::from_json(&SyncBundle::snapshot(&src).unwrap().to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(s.deleted, 1);
+    assert!(db::evidence::list(&dst, &fid).unwrap().is_empty());
+
+    let _ = std::fs::remove_file(&src_path);
+    let _ = std::fs::remove_file(&dst_path);
+}
+
 /// Rekey (change passphrase) and backup (encrypted file copy) behave correctly.
 #[test]
 fn e2e_rekey_and_backup() {

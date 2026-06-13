@@ -22,6 +22,12 @@ pub enum AppError {
     #[error("not found")]
     NotFound,
 
+    /// The vault file was created by a newer app version (its on-disk schema
+    /// `user_version` exceeds this build's `SCHEMA_VERSION`). Opening it could
+    /// silently corrupt data, so we refuse rather than downgrade.
+    #[error("incompatible vault: {0}")]
+    IncompatibleVault(String),
+
     /// A database / SQLite error. The string is the underlying message.
     #[error("database error: {0}")]
     Db(String),
@@ -72,6 +78,7 @@ impl AppError {
             AppError::VaultLocked => "vault_locked",
             AppError::WrongPassphrase => "wrong_passphrase",
             AppError::NotFound => "not_found",
+            AppError::IncompatibleVault(_) => "incompatible_vault",
             AppError::Db(_) => "db",
             AppError::Render(_) => "render",
             AppError::Pandoc(_) => "pandoc",

@@ -137,6 +137,19 @@
     "deleteConfirm": "Supprimer cette vulnérabilité ? Cette action est irréversible.",
     "createError": "Impossible de créer la vulnérabilité.",
     "addRow": "Ajouter",
+    "discard": {
+      "title": "Abandonner les modifications non enregistrées ?",
+      "body": "Cette vulnérabilité contient des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
+      "keepEditing": "Continuer l'édition",
+      "confirm": "Abandonner les modifications"
+    },
+    "validation": {
+      "titleRequired": "Un titre est requis.",
+      "cweFormat": "Format attendu : CWE-89 (ex. CWE-79).",
+      "cveFormat": "Format attendu : CVE-2024-1234.",
+      "lineNumber": "Saisissez un entier positif.",
+      "lineRange": "La ligne de fin doit être supérieure ou égale à la ligne de début."
+    },
     "section": {
       "classification": "Classification",
       "cvss": "Score CVSS",

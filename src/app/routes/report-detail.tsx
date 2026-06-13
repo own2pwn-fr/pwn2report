@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, BookMarked, Bug, FileUp, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ExportMenu } from "@/components/export-menu";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +38,26 @@ import type {
   ReportPatch,
 } from "@/lib/types";
 
+/** Subtle "Saving…/Saved ✓" status, shown only after the user has edited. */
+function SaveStatus({ status }: { status: "idle" | "saving" | "saved" }) {
+  const { t } = useTranslation();
+  if (status === "idle") return null;
+  if (status === "saving") {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        {t("common.saving")}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Check className="size-3 text-emerald-600 dark:text-emerald-500" />
+      {t("common.saved")}
+    </span>
+  );
+}
+
 /** A textarea that debounces updates back to the report on change. */
 function DebouncedField({
   label,
@@ -45,6 +66,8 @@ function DebouncedField({
   onCommit,
   rows = 4,
   aiAssist = false,
+  isPending = false,
+  isSuccess = false,
 }: {
   label: string;
   value: string;
@@ -53,36 +76,55 @@ function DebouncedField({
   rows?: number;
   /** Show an AI assist button next to the label (gated on AI being enabled). */
   aiAssist?: boolean;
+  /** The report update mutation is in flight. */
+  isPending?: boolean;
+  /** The last report update succeeded. */
+  isSuccess?: boolean;
 }) {
   const [local, setLocal] = useState(value);
+  // Whether THIS field initiated the most recent edit (so we only show its status).
+  const [touched, setTouched] = useState(false);
   // Re-sync when the upstream value changes (e.g. switching reports).
   useEffect(() => setLocal(value), [value]);
   const debounced = useDebouncedCallback((v: string) => onCommit(v), 600);
 
   // Replace the field with AI output and commit immediately (no debounce wait).
   const applyAi = (text: string) => {
+    setTouched(true);
     setLocal(text);
     onCommit(text);
   };
+
+  const status: "idle" | "saving" | "saved" = !touched
+    ? "idle"
+    : isPending
+      ? "saving"
+      : isSuccess
+        ? "saved"
+        : "idle";
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <Label>{label}</Label>
-        {aiAssist && (
-          <AiAssistButton
-            value={local}
-            fieldLabel={label}
-            onResult={applyAi}
-            className="-my-2 size-7"
-          />
-        )}
+        <div className="flex items-center gap-2">
+          <SaveStatus status={status} />
+          {aiAssist && (
+            <AiAssistButton
+              value={local}
+              fieldLabel={label}
+              onResult={applyAi}
+              className="-my-2 size-7"
+            />
+          )}
+        </div>
       </div>
       <Textarea
         value={local}
         rows={rows}
         placeholder={placeholder}
         onChange={(e) => {
+          setTouched(true);
           setLocal(e.target.value);
           debounced(e.target.value);
         }}
@@ -220,6 +262,8 @@ export function ReportDetail() {
             onCommit={(v) => commit({ exec_summary: v })}
             rows={4}
             aiAssist
+            isPending={updateReport.isPending}
+            isSuccess={updateReport.isSuccess}
           />
           <DebouncedField
             label={t("report.scope")}
@@ -227,6 +271,8 @@ export function ReportDetail() {
             placeholder={t("report.scopePlaceholder")}
             onCommit={(v) => commit({ scope: v })}
             rows={3}
+            isPending={updateReport.isPending}
+            isSuccess={updateReport.isSuccess}
           />
           <DebouncedField
             label={t("report.methodology")}
@@ -234,6 +280,8 @@ export function ReportDetail() {
             placeholder={t("report.methodologyPlaceholder")}
             onCommit={(v) => commit({ methodology: v })}
             rows={3}
+            isPending={updateReport.isPending}
+            isSuccess={updateReport.isSuccess}
           />
         </CardContent>
       </Card>
@@ -283,6 +331,7 @@ export function ReportDetail() {
         key={editing?.id ?? "new"}
         open={formOpen}
         onOpenChange={setFormOpen}
+        reportId={id ?? ""}
         finding={editing}
         onCreate={handleCreate}
         onUpdate={handleUpdate}

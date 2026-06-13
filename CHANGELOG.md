@@ -5,6 +5,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Data-integrity fixes (storage + sync)
+- **Real migration framework**: the schema is now applied through an ordered, idempotent
+  migration ladder keyed off `PRAGMA user_version` (previously stamped but never read). Fresh
+  installs run v1..v4; older vaults run only their missing steps. `SCHEMA_VERSION` bumped to **4**.
+- **Forward-compat guard**: opening a vault whose on-disk schema is newer than the running build
+  is refused with a new `IncompatibleVault` error instead of silently downgrading.
+- **Connection hardening pragmas** on every create/open: `busy_timeout=5000`, `secure_delete=ON`,
+  `foreign_keys=ON` (deliberately staying in rollback-journal mode — WAL breaks SQLCipher rekey).
+- **Atomic multi-field updates**: report/finding/KB `update` now issue a single parameterized
+  `UPDATE` built from the present patch fields (preserving the `Some(None)`=clear semantics),
+  fixing torn per-field writes that could leave a stale `updated_at` and let a concurrent sync
+  silently revert an edit.
+- **Soft-delete + tombstones (sync deletes propagate)**: deletes set a `deleted_at` tombstone
+  (added to every syncable table) and bump `updated_at`; live queries filter `deleted_at IS NULL`.
+  Tombstones travel in the sync bundle and win LWW, so a delete on one device removes the row on
+  peers and a stale bundle can no longer resurrect it. `SyncSummary` gains a `deleted` counter.
+
+### Editor robustness (data-loss guards)
+- **Finding editor**: dirty-state tracking with a discard-confirm dialog and a localStorage draft
+  (restored on reopen, cleared on save) so an accidental close/crash no longer loses the in-progress
+  finding; inline validation (CWE/CVE format, evidence line ranges); stable list-row keys.
+- **Autosave feedback**: the debounced report-prose autosave now flushes on unmount (no lost last
+  keystrokes) and shows a "Saving…/Saved" status.
+
 ### Hardening, packaging & tooling
 - **Markdown rich-text in the PDF**: a compile-safe Markdown→Typst converter renders prose
   (bold/italic/code/lists/links/headings) in PDF exports; Markdown/HTML/DOCX keep raw text.

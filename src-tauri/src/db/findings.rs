@@ -1,5 +1,6 @@
 //! Finding CRUD. Structured sub-objects live in JSON TEXT columns.
 
+use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
 
@@ -130,6 +131,7 @@ fn row_to_finding(row: &Row) -> AppResult<Finding> {
         tags: json_vec(row.get("tags")?)?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        deleted_at: row.get("deleted_at")?,
     })
 }
 
@@ -160,8 +162,10 @@ fn finding_cols(f: &Finding) -> AppResult<FindingCols> {
 
 /// List a report's findings ordered by `sort_order`.
 pub fn list(conn: &Connection, report_id: &str) -> AppResult<Vec<Finding>> {
-    let mut stmt = conn
-        .prepare("SELECT * FROM findings WHERE report_id = ?1 ORDER BY sort_order, created_at")?;
+    let mut stmt = conn.prepare(
+        "SELECT * FROM findings WHERE report_id = ?1 AND deleted_at IS NULL \
+         ORDER BY sort_order, created_at",
+    )?;
     // query_map closure must return rusqlite::Result, so collect rows first.
     let mut rows = stmt.query(params![report_id])?;
     let mut out = Vec::new();
@@ -172,7 +176,8 @@ pub fn list(conn: &Connection, report_id: &str) -> AppResult<Vec<Finding>> {
 }
 
 /// Fetch all findings across every report (used by the sync snapshot). Ordered
-/// by id for a deterministic snapshot.
+/// by id for a deterministic snapshot. INCLUDES soft-deleted rows so their
+/// tombstones travel in the bundle.
 pub fn list_all(conn: &Connection) -> AppResult<Vec<Finding>> {
     let mut stmt = conn.prepare("SELECT * FROM findings ORDER BY id")?;
     let mut rows = stmt.query([])?;
@@ -183,7 +188,8 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<Finding>> {
     Ok(out)
 }
 
-/// Whether a finding with this id exists.
+/// Whether a finding with this id exists (INCLUDING soft-deleted tombstones, so
+/// the sync merge applies LWW rather than re-inserting a locally-deleted row).
 pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
     let found: bool = conn
         .query_row("SELECT 1 FROM findings WHERE id = ?1", params![id], |_| {
@@ -205,12 +211,12 @@ pub fn insert_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             (id, report_id, sort_order, title, severity, confidence, kind,
              cwe, cve, cvss_vector, cvss_score, triage_status, triage_note,
              description, remediation, evidence, poc, refs, tags,
-             created_at, updated_at)
+             created_at, updated_at, deleted_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7,
              ?8, ?9, ?10, ?11, ?12, ?13,
              ?14, ?15, ?16, ?17, ?18, ?19,
-             ?20, ?21)
+             ?20, ?21, ?22)
         "#,
         params![
             f.id,
@@ -234,6 +240,7 @@ pub fn insert_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             c.tags,
             f.created_at,
             f.updated_at,
+            f.deleted_at,
         ],
     )?;
     Ok(())
@@ -251,7 +258,7 @@ pub fn update_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             kind = ?6, cwe = ?7, cve = ?8, cvss_vector = ?9, cvss_score = ?10,
             triage_status = ?11, triage_note = ?12, description = ?13,
             remediation = ?14, evidence = ?15, poc = ?16, refs = ?17,
-            tags = ?18, created_at = ?19, updated_at = ?20
+            tags = ?18, created_at = ?19, updated_at = ?20, deleted_at = ?21
         WHERE id = ?1
         "#,
         params![
@@ -275,13 +282,25 @@ pub fn update_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             c.tags,
             f.created_at,
             f.updated_at,
+            f.deleted_at,
         ],
     )?;
     Ok(())
 }
 
-/// Fetch a single finding by id.
+/// Fetch a single live finding by id (excludes soft-deleted tombstones).
 pub fn get(conn: &Connection, id: &str) -> AppResult<Finding> {
+    let mut stmt = conn.prepare("SELECT * FROM findings WHERE id = ?1 AND deleted_at IS NULL")?;
+    let mut rows = stmt.query(params![id])?;
+    match rows.next()? {
+        Some(row) => row_to_finding(row),
+        None => Err(AppError::NotFound),
+    }
+}
+
+/// Fetch a finding by id INCLUDING a soft-deleted tombstone (used by the sync
+/// merge to read the local `updated_at`/`deleted_at` for LWW).
+pub fn get_raw(conn: &Connection, id: &str) -> AppResult<Finding> {
     let mut stmt = conn.prepare("SELECT * FROM findings WHERE id = ?1")?;
     let mut rows = stmt.query(params![id])?;
     match rows.next()? {
@@ -467,119 +486,107 @@ pub fn update(conn: &Connection, id: &str, patch: FindingPatch) -> AppResult<Fin
     let _ = get(conn, id)?; // NotFound if absent.
     let now = now_rfc3339();
 
+    // Single atomic UPDATE built from the present patch fields + updated_at, so
+    // a multi-field edit never tears into separate writes with a stale
+    // updated_at (which previously let a concurrent sync revert the edit). The
+    // double-Option fields map Some(None) -> SQL NULL, Some(Some(v)) -> v.
+    let mut sets: Vec<&str> = vec!["updated_at = ?"];
+    let mut vals: Vec<Box<dyn ToSql>> = vec![Box::new(now)];
+
     if let Some(title) = patch.title {
-        conn.execute(
-            "UPDATE findings SET title = ?1 WHERE id = ?2",
-            params![title, id],
-        )?;
+        sets.push("title = ?");
+        vals.push(Box::new(title));
     }
     if let Some(sev) = patch.severity {
-        conn.execute(
-            "UPDATE findings SET severity = ?1 WHERE id = ?2",
-            params![sev.as_str(), id],
-        )?;
+        sets.push("severity = ?");
+        vals.push(Box::new(sev.as_str().to_string()));
     }
     if let Some(c) = patch.confidence {
-        conn.execute(
-            "UPDATE findings SET confidence = ?1 WHERE id = ?2",
-            params![confidence_str(c), id],
-        )?;
+        sets.push("confidence = ?");
+        vals.push(Box::new(confidence_str(c).to_string()));
     }
     if let Some(k) = patch.kind {
-        conn.execute(
-            "UPDATE findings SET kind = ?1 WHERE id = ?2",
-            params![kind_str(k), id],
-        )?;
+        sets.push("kind = ?");
+        vals.push(Box::new(kind_str(k).to_string()));
     }
     if let Some(cwe) = patch.cwe {
-        conn.execute(
-            "UPDATE findings SET cwe = ?1 WHERE id = ?2",
-            params![cwe, id],
-        )?;
+        sets.push("cwe = ?");
+        vals.push(Box::new(cwe)); // Option<String> -> NULL when None
     }
     if let Some(cve) = patch.cve {
-        conn.execute(
-            "UPDATE findings SET cve = ?1 WHERE id = ?2",
-            params![cve, id],
-        )?;
+        sets.push("cve = ?");
+        vals.push(Box::new(cve));
     }
     if let Some(v) = patch.cvss_vector {
-        conn.execute(
-            "UPDATE findings SET cvss_vector = ?1 WHERE id = ?2",
-            params![v, id],
-        )?;
+        sets.push("cvss_vector = ?");
+        vals.push(Box::new(v));
     }
     if let Some(score) = patch.cvss_score {
-        conn.execute(
-            "UPDATE findings SET cvss_score = ?1 WHERE id = ?2",
-            params![score, id],
-        )?;
+        sets.push("cvss_score = ?");
+        vals.push(Box::new(score));
     }
     if let Some(t) = patch.triage_status {
-        conn.execute(
-            "UPDATE findings SET triage_status = ?1 WHERE id = ?2",
-            params![triage_str(t), id],
-        )?;
+        sets.push("triage_status = ?");
+        vals.push(Box::new(triage_str(t).to_string()));
     }
     if let Some(note) = patch.triage_note {
-        conn.execute(
-            "UPDATE findings SET triage_note = ?1 WHERE id = ?2",
-            params![note, id],
-        )?;
+        sets.push("triage_note = ?");
+        vals.push(Box::new(note));
     }
     if let Some(desc) = patch.description {
-        conn.execute(
-            "UPDATE findings SET description = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&desc)?, id],
-        )?;
+        sets.push("description = ?");
+        vals.push(Box::new(serde_json::to_string(&desc)?));
     }
     if let Some(rem) = patch.remediation {
-        conn.execute(
-            "UPDATE findings SET remediation = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&rem)?, id],
-        )?;
+        sets.push("remediation = ?");
+        vals.push(Box::new(serde_json::to_string(&rem)?));
     }
     if let Some(ev) = patch.evidence {
         let json = ev.as_ref().map(serde_json::to_string).transpose()?;
-        conn.execute(
-            "UPDATE findings SET evidence = ?1 WHERE id = ?2",
-            params![json, id],
-        )?;
+        sets.push("evidence = ?");
+        vals.push(Box::new(json)); // Option<String> -> NULL when None
     }
     if let Some(poc) = patch.poc {
         let json = poc.as_ref().map(serde_json::to_string).transpose()?;
-        conn.execute(
-            "UPDATE findings SET poc = ?1 WHERE id = ?2",
-            params![json, id],
-        )?;
+        sets.push("poc = ?");
+        vals.push(Box::new(json));
     }
     if let Some(refs) = patch.refs {
-        conn.execute(
-            "UPDATE findings SET refs = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&refs)?, id],
-        )?;
+        sets.push("refs = ?");
+        vals.push(Box::new(serde_json::to_string(&refs)?));
     }
     if let Some(tags) = patch.tags {
-        conn.execute(
-            "UPDATE findings SET tags = ?1 WHERE id = ?2",
-            params![serde_json::to_string(&tags)?, id],
-        )?;
+        sets.push("tags = ?");
+        vals.push(Box::new(serde_json::to_string(&tags)?));
     }
 
-    conn.execute(
-        "UPDATE findings SET updated_at = ?1 WHERE id = ?2",
-        params![now, id],
-    )?;
+    let sql = format!("UPDATE findings SET {} WHERE id = ?", sets.join(", "));
+    vals.push(Box::new(id.to_string()));
+    let bound: Vec<&dyn ToSql> = vals.iter().map(|b| b.as_ref()).collect();
+    conn.execute(&sql, bound.as_slice())?;
 
     get(conn, id)
 }
 
-/// Delete a finding by id.
+/// Soft-delete a finding (and its evidence images): set `deleted_at = now` and
+/// bump `updated_at` so the deletion becomes a tombstone that travels through
+/// sync and wins LWW, instead of resurrecting from a peer. Children (evidence
+/// images) are soft-deleted alongside so the subtree is consistently gone.
 pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
-    let n = conn.execute("DELETE FROM findings WHERE id = ?1", params![id])?;
+    let now = now_rfc3339();
+    let n = conn.execute(
+        "UPDATE findings SET deleted_at = ?1, updated_at = ?1 \
+         WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if n == 0 {
         return Err(AppError::NotFound);
     }
+    conn.execute(
+        "UPDATE evidence_images SET deleted_at = ?1 \
+         WHERE finding_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     Ok(())
 }
 

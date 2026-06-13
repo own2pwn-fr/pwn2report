@@ -18,6 +18,11 @@ pub struct EvidenceImage {
     pub mime: String,
     pub sort_order: i64,
     pub created_at: String,
+    /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
+    /// the IPC payload when absent; carried through the sync bundle so deletes
+    /// propagate across devices. Not surfaced in the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -33,6 +38,7 @@ mod tests {
             mime: "image/png".into(),
             sort_order: 2,
             created_at: "2026-06-12T12:00:00Z".into(),
+            deleted_at: None,
         };
         let json = serde_json::to_string(&img).unwrap();
         // camelCase is NOT applied (matches the rest of the models, which rely

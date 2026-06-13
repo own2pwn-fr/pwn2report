@@ -1,5 +1,6 @@
 //! Report CRUD.
 
+use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
 
@@ -32,6 +33,7 @@ fn row_to_report(row: &Row) -> rusqlite::Result<Report> {
         methodology: row.get("methodology")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        deleted_at: row.get("deleted_at")?,
     })
 }
 
@@ -42,7 +44,9 @@ pub fn list(conn: &Connection) -> AppResult<Vec<ReportSummary>> {
         SELECT r.id, r.title, r.client, r.report_type, r.status, r.updated_at,
                COUNT(f.id) AS finding_count
         FROM reports r
-        LEFT JOIN findings f ON f.report_id = r.id
+        LEFT JOIN findings f
+            ON f.report_id = r.id AND f.deleted_at IS NULL
+        WHERE r.deleted_at IS NULL
         GROUP BY r.id
         ORDER BY r.updated_at DESC
         "#,
@@ -70,7 +74,7 @@ pub fn list(conn: &Connection) -> AppResult<Vec<ReportSummary>> {
 pub fn get(conn: &Connection, id: &str) -> AppResult<Report> {
     let report = conn
         .query_row(
-            "SELECT * FROM reports WHERE id = ?1",
+            "SELECT * FROM reports WHERE id = ?1 AND deleted_at IS NULL",
             params![id],
             row_to_report,
         )
@@ -79,7 +83,8 @@ pub fn get(conn: &Connection, id: &str) -> AppResult<Report> {
 }
 
 /// Fetch all reports as full rows (used by the sync snapshot). Ordered by id
-/// for a deterministic snapshot.
+/// for a deterministic snapshot. INCLUDES soft-deleted rows so their tombstones
+/// (`deleted_at`) travel in the bundle and suppress resurrection on peers.
 pub fn list_all(conn: &Connection) -> AppResult<Vec<Report>> {
     let mut stmt = conn.prepare("SELECT * FROM reports ORDER BY id")?;
     let mut rows = stmt.query([])?;
@@ -90,7 +95,9 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<Report>> {
     Ok(out)
 }
 
-/// Whether a report with this id exists.
+/// Whether a report with this id exists (INCLUDING soft-deleted tombstones, so
+/// the sync merge treats a locally-deleted row as present and applies LWW rather
+/// than re-inserting it).
 pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
     let found: bool = conn
         .query_row("SELECT 1 FROM reports WHERE id = ?1", params![id], |_| {
@@ -101,6 +108,20 @@ pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
     Ok(found)
 }
 
+/// Fetch a report by id INCLUDING a soft-deleted tombstone (used by the sync
+/// merge to read the local `updated_at`/`deleted_at` for LWW). Returns NotFound
+/// only if the row is truly absent.
+pub fn get_raw(conn: &Connection, id: &str) -> AppResult<Report> {
+    let report = conn
+        .query_row(
+            "SELECT * FROM reports WHERE id = ?1",
+            params![id],
+            row_to_report,
+        )
+        .optional()?;
+    report.ok_or(AppError::NotFound)
+}
+
 /// Insert a report verbatim, preserving its id + timestamps (sync merge — NOT
 /// the id-generating [`create`]).
 pub fn insert_raw(conn: &Connection, r: &Report) -> AppResult<()> {
@@ -108,8 +129,8 @@ pub fn insert_raw(conn: &Connection, r: &Report) -> AppResult<()> {
         r#"
         INSERT INTO reports
             (id, title, client, report_type, status, exec_summary, scope,
-             methodology, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             methodology, created_at, updated_at, deleted_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
         "#,
         params![
             r.id,
@@ -122,6 +143,7 @@ pub fn insert_raw(conn: &Connection, r: &Report) -> AppResult<()> {
             r.methodology,
             r.created_at,
             r.updated_at,
+            r.deleted_at,
         ],
     )?;
     Ok(())
@@ -135,7 +157,7 @@ pub fn update_raw(conn: &Connection, r: &Report) -> AppResult<()> {
         UPDATE reports SET
             title = ?2, client = ?3, report_type = ?4, status = ?5,
             exec_summary = ?6, scope = ?7, methodology = ?8,
-            created_at = ?9, updated_at = ?10
+            created_at = ?9, updated_at = ?10, deleted_at = ?11
         WHERE id = ?1
         "#,
         params![
@@ -149,6 +171,7 @@ pub fn update_raw(conn: &Connection, r: &Report) -> AppResult<()> {
             r.methodology,
             r.created_at,
             r.updated_at,
+            r.deleted_at,
         ],
     )?;
     Ok(())
@@ -179,66 +202,85 @@ pub fn create(conn: &Connection, input: NewReport) -> AppResult<Report> {
 
 /// Apply a partial update; returns the updated report. `None` patch fields are
 /// left unchanged. Always bumps `updated_at`.
+///
+/// Built as a SINGLE atomic `UPDATE` from only the present patch fields (plus
+/// `updated_at`) so a multi-field edit can never tear into separate writes with
+/// a stale `updated_at` (which previously let a concurrent sync silently revert
+/// the edit).
 pub fn update(conn: &Connection, id: &str, patch: ReportPatch) -> AppResult<Report> {
     // Ensure it exists (so we return NotFound rather than a silent no-op).
     let _ = get(conn, id)?;
 
     let now = now_rfc3339();
+    // All placeholders are anonymous `?` and bound positionally in push order;
+    // `updated_at` is always set first, `id` (the WHERE) bound last.
+    let mut sets: Vec<&str> = vec!["updated_at = ?"];
+    let mut vals: Vec<Box<dyn ToSql>> = vec![Box::new(now)];
+
     if let Some(title) = patch.title {
-        conn.execute(
-            "UPDATE reports SET title = ?1 WHERE id = ?2",
-            params![title, id],
-        )?;
+        sets.push("title = ?");
+        vals.push(Box::new(title));
     }
     if let Some(client) = patch.client {
-        conn.execute(
-            "UPDATE reports SET client = ?1 WHERE id = ?2",
-            params![client, id],
-        )?;
+        sets.push("client = ?");
+        vals.push(Box::new(client));
     }
     if let Some(rt) = patch.report_type {
-        conn.execute(
-            "UPDATE reports SET report_type = ?1 WHERE id = ?2",
-            params![report_type_str(rt), id],
-        )?;
+        sets.push("report_type = ?");
+        vals.push(Box::new(report_type_str(rt).to_string()));
     }
     if let Some(status) = patch.status {
-        conn.execute(
-            "UPDATE reports SET status = ?1 WHERE id = ?2",
-            params![status, id],
-        )?;
+        sets.push("status = ?");
+        vals.push(Box::new(status));
     }
     if let Some(exec_summary) = patch.exec_summary {
-        conn.execute(
-            "UPDATE reports SET exec_summary = ?1 WHERE id = ?2",
-            params![exec_summary, id],
-        )?;
+        sets.push("exec_summary = ?");
+        vals.push(Box::new(exec_summary));
     }
     if let Some(scope) = patch.scope {
-        conn.execute(
-            "UPDATE reports SET scope = ?1 WHERE id = ?2",
-            params![scope, id],
-        )?;
+        sets.push("scope = ?");
+        vals.push(Box::new(scope));
     }
     if let Some(methodology) = patch.methodology {
-        conn.execute(
-            "UPDATE reports SET methodology = ?1 WHERE id = ?2",
-            params![methodology, id],
-        )?;
+        sets.push("methodology = ?");
+        vals.push(Box::new(methodology));
     }
-    conn.execute(
-        "UPDATE reports SET updated_at = ?1 WHERE id = ?2",
-        params![now, id],
-    )?;
+
+    // id goes last as the final positional parameter.
+    let sql = format!("UPDATE reports SET {} WHERE id = ?", sets.join(", "));
+    vals.push(Box::new(id.to_string()));
+    let params: Vec<&dyn ToSql> = vals.iter().map(|b| b.as_ref()).collect();
+    conn.execute(&sql, params.as_slice())?;
 
     get(conn, id)
 }
 
-/// Delete a report (and its findings, via ON DELETE CASCADE).
+/// Soft-delete a report (and, transitively, its findings + their evidence): set
+/// `deleted_at = now` and bump `updated_at` so the deletion becomes a tombstone
+/// that travels through sync and wins LWW, instead of a hard DELETE that a peer
+/// would resurrect. Children are soft-deleted alongside the parent so the FK
+/// subtree is consistently "gone" (queries filter `deleted_at IS NULL`).
 pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
-    let n = conn.execute("DELETE FROM reports WHERE id = ?1", params![id])?;
+    let now = now_rfc3339();
+    let n = conn.execute(
+        "UPDATE reports SET deleted_at = ?1, updated_at = ?1 \
+         WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if n == 0 {
         return Err(AppError::NotFound);
     }
+    // Cascade the tombstone to children (only the still-live ones).
+    conn.execute(
+        "UPDATE findings SET deleted_at = ?1, updated_at = ?1 \
+         WHERE report_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    conn.execute(
+        "UPDATE evidence_images SET deleted_at = ?1 \
+         WHERE deleted_at IS NULL AND finding_id IN \
+            (SELECT id FROM findings WHERE report_id = ?2)",
+        params![now, id],
+    )?;
     Ok(())
 }

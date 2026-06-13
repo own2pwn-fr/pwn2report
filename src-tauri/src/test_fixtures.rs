@@ -19,6 +19,7 @@ pub fn sample_report() -> Report {
         methodology: "OWASP WSTG.".into(),
         created_at: "2026-06-12T00:00:00Z".into(),
         updated_at: "2026-06-12T12:00:00Z".into(),
+        deleted_at: None,
     }
 }
 
@@ -65,5 +66,6 @@ pub fn sample_finding() -> Finding {
         tags: vec!["injection".into(), "owasp-a03".into()],
         created_at: "2026-06-12T00:00:00Z".into(),
         updated_at: "2026-06-12T12:00:00Z".into(),
+        deleted_at: None,
     }
 }
