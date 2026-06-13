@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Docs & supply-chain
+- `SECURITY.md` (threat model + private disclosure), `CONTRIBUTING.md` (dev setup, PR checklist,
+  build pins), and an expanded README (badges, Install, Usage, Troubleshooting, AGPL §13 note).
+- CI gains a supply-chain `audit` job (`cargo audit` + `pnpm audit`).
+
 ### UX & accessibility overhaul (frontend)
 - **Persistent app shell**: a single top-bar navigation (Reports / Knowledge Base / Settings + Lock) replaces
   the per-route header blocks. Route changes move focus to the main region, there's a skip-to-content link,

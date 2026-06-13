@@ -74,3 +74,24 @@ jobs:
         run: pnpm test
       - name: Build
         run: pnpm exec vite build
+
+  audit:
+    name: supply-chain audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show
+        working-directory: src-tauri
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cd src-tauri && cargo audit
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: pnpm audit (prod deps)
+        run: pnpm audit --prod || true   # advisory: report, don't hard-fail the build
