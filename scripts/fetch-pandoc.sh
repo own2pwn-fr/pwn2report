@@ -29,7 +29,19 @@ case "$TRIPLE" in
 esac
 
 curl -fsSL "$base/$asset" -o "$tmp/pandoc-archive"
-tar -xf "$tmp/pandoc-archive" -C "$tmp"
+# Extract: .tar.gz with tar; .zip with unzip/python (Windows git-bash ships GNU
+# tar, which can't read zip — so don't rely on `tar -xf` for zips).
+case "$asset" in
+  *.tar.gz)
+    tar -xzf "$tmp/pandoc-archive" -C "$tmp" ;;
+  *.zip)
+    if command -v unzip >/dev/null 2>&1; then unzip -oq "$tmp/pandoc-archive" -d "$tmp"
+    elif command -v python3 >/dev/null 2>&1; then python3 -m zipfile -e "$tmp/pandoc-archive" "$tmp"
+    elif command -v python >/dev/null 2>&1; then python -m zipfile -e "$tmp/pandoc-archive" "$tmp"
+    else tar -xf "$tmp/pandoc-archive" -C "$tmp"; fi ;;
+  *)
+    tar -xf "$tmp/pandoc-archive" -C "$tmp" ;;
+esac
 cp "$tmp"/pandoc-*/"$inner" "$OUT_DIR/$out"
 [ "${out##*.}" = "exe" ] || chmod +x "$OUT_DIR/$out"
 echo "pandoc $PANDOC_VERSION -> $OUT_DIR/$out"
