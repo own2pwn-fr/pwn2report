@@ -15,6 +15,7 @@ import {
   Upload,
   Download,
   AlertTriangle,
+  ListPlus,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -52,14 +53,30 @@ import {
   useTemplate,
   useTemplates,
 } from "@/lib/queries/use-templates";
-import { useAiConfig, useSaveAiConfig, useTestAiConnection } from "@/lib/queries/use-ai";
+import {
+  useAiConfig,
+  useAiModels,
+  useSaveAiConfig,
+  useTestAiConnection,
+} from "@/lib/queries/use-ai";
 import { useExportSyncBundle, useImportSyncBundle } from "@/lib/queries/use-sync";
 import { useOnboarding } from "@/lib/use-onboarding";
 import { setLanguage, SUPPORTED_LANGUAGES, type Language } from "@/i18n";
 import type { AiConfig, AiProvider, ReportType, SyncSummary } from "@/lib/types";
 
 const MIN_PASSPHRASE = 8;
-const AI_PROVIDERS: AiProvider[] = ["ollama", "openai", "anthropic"];
+const AI_PROVIDERS: AiProvider[] = ["ollama", "openai", "anthropic", "azure", "gemini"];
+const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_API_VERSION = "2024-06-01";
+
+// i18n key for each provider's display label.
+const PROVIDER_LABEL_KEY: Record<AiProvider, string> = {
+  ollama: "settings.ai.providerOllama",
+  openai: "settings.ai.providerOpenai",
+  anthropic: "settings.ai.providerAnthropic",
+  azure: "settings.ai.providerAzure",
+  gemini: "settings.ai.providerGemini",
+};
 
 function AppearanceSection() {
   const { t, i18n } = useTranslation();
@@ -131,16 +148,20 @@ function AiSection() {
   const { data: config } = useAiConfig();
   const saveAi = useSaveAiConfig();
   const testAi = useTestAiConnection();
+  const listModels = useAiModels();
 
   const [draft, setDraft] = useState<AiConfig>({
     enabled: false,
     provider: "ollama",
     base_url: "",
     model: "",
+    max_tokens: DEFAULT_MAX_TOKENS,
   });
   const [apiKey, setApiKey] = useState("");
   // Track whether the backend already holds a key so we can hint accordingly.
   const [hasKey, setHasKey] = useState(false);
+  // Models fetched on demand from the provider; empty until the user fetches.
+  const [models, setModels] = useState<string[]>([]);
 
   // Hydrate the editable draft from the persisted config once it loads.
   useEffect(() => {
@@ -150,12 +171,32 @@ function AiSection() {
         provider: config.provider,
         base_url: config.base_url,
         model: config.model,
+        max_tokens: config.max_tokens ?? DEFAULT_MAX_TOKENS,
+        api_version: config.api_version,
       });
       setHasKey(config.has_key);
     }
   }, [config]);
 
+  // Ollama runs locally without a key. Every other provider is a cloud service.
   const cloudProvider = draft.provider !== "ollama";
+  const isAzure = draft.provider === "azure";
+  // The API key is optional for OpenAI-compatible servers (some local/self-hosted
+  // gateways are keyless); it stays required for the true cloud providers.
+  const keyOptional = draft.provider === "openai";
+
+  const handleFetchModels = () => {
+    listModels.mutate(undefined, {
+      onSuccess: (ids) => {
+        setModels(ids);
+        if (ids.length === 0) toast.info(t("settings.ai.fetchModelsEmpty"));
+      },
+      onError: (err) => {
+        setModels([]);
+        toast.error(errorMessage(err, "settings.ai.fetchModelsError"));
+      },
+    });
+  };
 
   const persist = (next: AiConfig, keyArg?: string | null) =>
     saveAi.mutate(
@@ -218,7 +259,20 @@ function AiSection() {
             <Label>{t("settings.ai.provider")}</Label>
             <Select
               value={draft.provider}
-              onValueChange={(v) => setDraft((d) => ({ ...d, provider: v as AiProvider }))}
+              onValueChange={(v) =>
+                setDraft((d) => {
+                  const provider = v as AiProvider;
+                  return {
+                    ...d,
+                    provider,
+                    // Default the Azure API version when first selecting Azure.
+                    api_version:
+                      provider === "azure"
+                        ? (d.api_version ?? DEFAULT_API_VERSION)
+                        : d.api_version,
+                  };
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue />
@@ -226,13 +280,7 @@ function AiSection() {
               <SelectContent>
                 {AI_PROVIDERS.map((p) => (
                   <SelectItem key={p} value={p}>
-                    {t(
-                      p === "ollama"
-                        ? "settings.ai.providerOllama"
-                        : p === "openai"
-                          ? "settings.ai.providerOpenai"
-                          : "settings.ai.providerAnthropic",
-                    )}
+                    {t(PROVIDER_LABEL_KEY[p])}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -240,13 +288,53 @@ function AiSection() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ai-model">{t("settings.ai.model")}</Label>
-            <Input
-              id="ai-model"
-              value={draft.model}
-              onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value }))}
-              placeholder={t("settings.ai.modelPlaceholder")}
-              className="font-mono text-xs"
-            />
+            <div className="flex gap-2">
+              {models.length > 0 ? (
+                <Select
+                  value={draft.model}
+                  onValueChange={(v) => setDraft((d) => ({ ...d, model: v }))}
+                >
+                  <SelectTrigger id="ai-model" className="font-mono text-xs">
+                    <SelectValue placeholder={t("settings.ai.modelPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((m) => (
+                      <SelectItem key={m} value={m} className="font-mono text-xs">
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="ai-model"
+                  value={draft.model}
+                  onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value }))}
+                  placeholder={t("settings.ai.modelPlaceholder")}
+                  className="font-mono text-xs"
+                />
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleFetchModels}
+                disabled={listModels.isPending}
+                title={t("settings.ai.fetchModels")}
+              >
+                <ListPlus />
+                <span className="sr-only sm:not-sr-only">
+                  {listModels.isPending
+                    ? t("settings.ai.fetchingModels")
+                    : t("settings.ai.fetchModels")}
+                </span>
+              </Button>
+            </div>
+            {models.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t("settings.ai.fetchModelsFallbackHint")}
+              </p>
+            )}
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="ai-base-url">{t("settings.ai.baseUrl")}</Label>
@@ -258,9 +346,42 @@ function AiSection() {
               className="font-mono text-xs"
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-max-tokens">{t("settings.ai.maxTokens")}</Label>
+            <Input
+              id="ai-max-tokens"
+              type="number"
+              min={1}
+              value={draft.max_tokens}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  max_tokens: Number(e.target.value) || DEFAULT_MAX_TOKENS,
+                }))
+              }
+              placeholder={String(DEFAULT_MAX_TOKENS)}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">{t("settings.ai.maxTokensHint")}</p>
+          </div>
+          {isAzure && (
+            <div className="space-y-1.5">
+              <Label htmlFor="ai-api-version">{t("settings.ai.apiVersion")}</Label>
+              <Input
+                id="ai-api-version"
+                value={draft.api_version ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, api_version: e.target.value }))}
+                placeholder={DEFAULT_API_VERSION}
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">{t("settings.ai.apiVersionHint")}</p>
+            </div>
+          )}
           {cloudProvider && (
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="ai-key">{t("settings.ai.apiKey")}</Label>
+              <Label htmlFor="ai-key">
+                {keyOptional ? t("settings.ai.apiKeyOptional") : t("settings.ai.apiKey")}
+              </Label>
               <Input
                 id="ai-key"
                 type="password"

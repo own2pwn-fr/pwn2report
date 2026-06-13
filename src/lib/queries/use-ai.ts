@@ -35,3 +35,14 @@ export function useTestAiConnection() {
     mutationFn: ipc.aiTestConnection,
   });
 }
+
+/**
+ * Fetch the model ids exposed by the configured provider, on demand. Modeled as
+ * a mutation (not an auto-running query) because it needs a valid base URL / key
+ * and should only fire when the user clicks "Fetch models".
+ */
+export function useAiModels() {
+  return useMutation({
+    mutationFn: ipc.aiListModels,
+  });
+}

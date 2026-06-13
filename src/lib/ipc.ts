@@ -307,3 +307,9 @@ export const aiTestConnection = () => invoke<string>("ai_test_connection");
 
 export const aiComplete = (prompt: string, system?: string | null) =>
   invoke<string>("ai_complete", { system: system ?? null, prompt });
+
+/**
+ * List the model ids the configured provider exposes. Requires a valid
+ * base URL / API key for the current provider; fetch on demand (not on load).
+ */
+export const aiListModels = () => invoke<string[]>("ai_list_models");

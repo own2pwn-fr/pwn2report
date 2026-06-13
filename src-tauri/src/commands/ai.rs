@@ -21,6 +21,8 @@ pub struct AiConfigView {
     pub provider: config::AiProvider,
     pub base_url: String,
     pub model: String,
+    pub max_tokens: u32,
+    pub api_version: Option<String>,
     pub has_key: bool,
 }
 
@@ -33,6 +35,8 @@ pub fn ai_get_config(app: AppHandle) -> AppResult<AiConfigView> {
         provider: cfg.provider,
         base_url: cfg.base_url,
         model: cfg.model,
+        max_tokens: cfg.max_tokens,
+        api_version: cfg.api_version,
         has_key: keychain::has_key(),
     })
 }
@@ -95,4 +99,20 @@ pub fn ai_complete(app: AppHandle, system: Option<String>, prompt: String) -> Ap
     }
     let key = keychain::get().ok().flatten();
     ai::complete(&cfg, key.as_deref(), system.as_deref(), &prompt)
+}
+
+/// List the model identifiers advertised by the configured provider, using the
+/// saved config + stored key. A convenience for the settings UI (the app does
+/// not depend on it): errors surface clearly if AI is disabled, the provider is
+/// unreachable, or the key is missing for a provider that requires one.
+#[tauri::command]
+pub fn ai_list_models(app: AppHandle) -> AppResult<Vec<String>> {
+    let cfg = config::load(&app)?;
+    if !cfg.enabled {
+        return Err(AppError::Ai(
+            "AI is disabled — enable it in AI settings first".to_string(),
+        ));
+    }
+    let key = keychain::get().ok().flatten();
+    ai::list_models(&cfg, key.as_deref())
 }

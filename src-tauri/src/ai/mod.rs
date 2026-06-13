@@ -21,14 +21,25 @@ use config::{AiConfig, AiProvider};
 /// modest hardware can take a while to produce a first/full response.
 const TIMEOUT_SECS: u64 = 120;
 
+/// Number of attempts (initial try + retries) for a provider HTTP call. Only
+/// HTTP 429 and 5xx (plus transport errors) are retried; other 4xx fail fast.
+const MAX_ATTEMPTS: u32 = 3;
+
+/// Base backoff between retries; doubled each attempt (exponential).
+const BACKOFF_BASE_MS: u64 = 500;
+
+/// Cap on a single backoff sleep, including a server-supplied `Retry-After`.
+const BACKOFF_MAX_MS: u64 = 10_000;
+
 /// Run a single non-streaming completion against the configured provider.
 ///
 /// `system` is an optional system prompt; `prompt` is the user message. Returns
 /// the model's text output, or [`AppError::Ai`] with a clear, user-facing
 /// message (including the provider name and, for HTTP failures, the status).
 ///
-/// Cloud providers (OpenAI/Anthropic) require `api_key`; a missing key yields a
-/// clear error rather than a confusing 401 round-trip.
+/// Cloud providers that mandate auth (Anthropic, Azure, Gemini) require
+/// `api_key`; a missing key yields a clear error rather than a confusing 401
+/// round-trip. The OpenAI provider's key is optional (keyless local servers).
 pub fn complete(
     cfg: &AiConfig,
     api_key: Option<&str>,
@@ -40,6 +51,24 @@ pub fn complete(
         AiProvider::Ollama => complete_ollama(cfg, system, prompt),
         AiProvider::Openai => complete_openai(cfg, api_key, system, prompt),
         AiProvider::Anthropic => complete_anthropic(cfg, api_key, system, prompt),
+        AiProvider::Azure => complete_azure(cfg, api_key, system, prompt),
+        AiProvider::Gemini => complete_gemini(cfg, api_key, system, prompt),
+    }
+}
+
+/// List the model identifiers advertised by the configured provider.
+///
+/// This is a convenience for the settings UI — it is *not* required for the app
+/// to function. Each provider exposes its own listing endpoint and JSON shape;
+/// failures surface as a clear [`AppError::Ai`].
+pub fn list_models(cfg: &AiConfig, api_key: Option<&str>) -> AppResult<Vec<String>> {
+    validate_base_url(cfg)?;
+    match cfg.provider {
+        AiProvider::Ollama => list_models_ollama(cfg),
+        AiProvider::Openai => list_models_openai(cfg, api_key),
+        AiProvider::Anthropic => list_models_anthropic(cfg, api_key),
+        AiProvider::Azure => list_models_azure(cfg, api_key),
+        AiProvider::Gemini => list_models_gemini(cfg, api_key),
     }
 }
 
@@ -78,8 +107,9 @@ fn is_loopback_host(host: &str) -> bool {
 /// Rules:
 /// - The URL MUST have a `http://` or `https://` scheme and a non-empty host —
 ///   any other scheme (`file:`, `ftp:`, `gopher:`, `data:`, …) is rejected.
-/// - Cloud providers (OpenAI / Anthropic) MUST use `https`, UNLESS the host is
-///   loopback/localhost (so local OpenAI-compatible servers over http work).
+/// - Cloud providers (OpenAI / Anthropic / Azure / Gemini) MUST use `https`,
+///   UNLESS the host is loopback/localhost (so local OpenAI-compatible servers
+///   over http work).
 /// - Ollama (local by design) may use plain `http` to any host.
 fn validate_base_url(cfg: &AiConfig) -> AppResult<()> {
     let raw = cfg.base_url.trim();
@@ -115,7 +145,10 @@ fn validate_base_url(cfg: &AiConfig) -> AppResult<()> {
 
     // Cloud providers must use TLS unless talking to a local server.
     if !is_https
-        && matches!(cfg.provider, AiProvider::Openai | AiProvider::Anthropic)
+        && matches!(
+            cfg.provider,
+            AiProvider::Openai | AiProvider::Anthropic | AiProvider::Azure | AiProvider::Gemini
+        )
         && !is_loopback_host(host)
     {
         return Err(AppError::Ai(format!(
@@ -149,6 +182,65 @@ fn map_ureq_err(provider: &str, err: ureq::Error) -> AppError {
     }
 }
 
+/// Whether a `ureq` error is worth retrying: HTTP 429, any 5xx, or a
+/// transport-level failure (connection reset, timeout, …). Other 4xx are
+/// permanent (bad request, auth, not found) and must fail fast.
+fn is_retryable(err: &ureq::Error) -> bool {
+    match err {
+        ureq::Error::Status(code, _) => *code == 429 || (500..=599).contains(code),
+        ureq::Error::Transport(_) => true,
+    }
+}
+
+/// Parse a `Retry-After` header value (RFC 7231): an integer number of seconds.
+/// We deliberately ignore the HTTP-date form (rare for these APIs) and return
+/// `None` for anything we can't read as whole seconds.
+fn parse_retry_after_secs(value: &str) -> Option<u64> {
+    value.trim().parse::<u64>().ok()
+}
+
+/// Run a provider HTTP call with retry + exponential backoff.
+///
+/// `call` is invoked up to [`MAX_ATTEMPTS`] times. It returns the raw `ureq`
+/// `Response` so we can read a `Retry-After` header on a 429 before backing off
+/// (a `ureq::Error::Status` still carries the response). On a retryable failure
+/// we sleep `min(BACKOFF_BASE_MS * 2^attempt, BACKOFF_MAX_MS)` — or the
+/// server's `Retry-After` when larger — then try again. The final error is
+/// mapped to a clear [`AppError::Ai`] via [`map_ureq_err`].
+fn with_retry<F>(provider: &str, mut call: F) -> AppResult<ureq::Response>
+where
+    F: FnMut() -> Result<ureq::Response, ureq::Error>,
+{
+    let mut attempt: u32 = 0;
+    loop {
+        match call() {
+            Ok(resp) => return Ok(resp),
+            Err(err) => {
+                let last = attempt + 1 >= MAX_ATTEMPTS;
+                if last || !is_retryable(&err) {
+                    return Err(map_ureq_err(provider, err));
+                }
+                // Honor Retry-After (seconds) on a 429 if it's larger than our
+                // computed exponential backoff.
+                let retry_after_ms = match &err {
+                    ureq::Error::Status(_, resp) => resp
+                        .header("Retry-After")
+                        .and_then(parse_retry_after_secs)
+                        .map(|s| s.saturating_mul(1000)),
+                    ureq::Error::Transport(_) => None,
+                };
+                let backoff = BACKOFF_BASE_MS.saturating_mul(1u64 << attempt);
+                let sleep_ms = retry_after_ms
+                    .unwrap_or(backoff)
+                    .max(backoff)
+                    .min(BACKOFF_MAX_MS);
+                std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+                attempt += 1;
+            }
+        }
+    }
+}
+
 /// Pull a required string out of a JSON path, erroring clearly if the provider
 /// returned an unexpected shape.
 fn require_text(provider: &str, v: Option<&Value>) -> AppResult<String> {
@@ -158,6 +250,38 @@ fn require_text(provider: &str, v: Option<&Value>) -> AppResult<String> {
             "{provider} returned an unexpected response shape (no text content)"
         ))),
     }
+}
+
+/// Parse a `ureq::Response` body as JSON, with a clear provider-tagged error.
+fn into_json(provider: &str, resp: ureq::Response) -> AppResult<Value> {
+    resp.into_json()
+        .map_err(|e| AppError::Ai(format!("{provider} returned invalid JSON: {e}")))
+}
+
+/// Collect a list of model ids from `resp[array_ptr][].field`, skipping any
+/// entries that lack a (non-empty) string at `field`. Errors clearly if the
+/// pointed-at value isn't an array.
+fn collect_model_names(
+    provider: &str,
+    resp: &Value,
+    array_ptr: &str,
+    field: &str,
+) -> AppResult<Vec<String>> {
+    let arr = resp
+        .pointer(array_ptr)
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            AppError::Ai(format!(
+                "{provider} returned an unexpected response shape (no model list)"
+            ))
+        })?;
+    let names: Vec<String> = arr
+        .iter()
+        .filter_map(|m| m.get(field).and_then(Value::as_str))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    Ok(names)
 }
 
 /// Require a non-empty API key for cloud providers.
@@ -189,37 +313,37 @@ fn complete_ollama(cfg: &AiConfig, system: Option<&str>, prompt: &str) -> AppRes
         "model": cfg.model,
         "messages": chat_messages(system, prompt),
         "stream": false,
+        "options": { "num_predict": cfg.max_tokens },
     });
-    let resp: Value = agent()
-        .post(&url)
-        .send_json(body)
-        .map_err(|e| map_ureq_err("Ollama", e))?
-        .into_json()
-        .map_err(|e| AppError::Ai(format!("Ollama returned invalid JSON: {e}")))?;
+    let resp = with_retry("Ollama", || agent().post(&url).send_json(body.clone()))?;
+    let resp = into_json("Ollama", resp)?;
     require_text("Ollama", resp.pointer("/message/content"))
 }
 
-/// OpenAI-compatible: `POST {base_url}/v1/chat/completions` with a bearer key,
-/// non-streaming → `.choices[0].message.content`.
+/// OpenAI-compatible: `POST {base_url}/v1/chat/completions`, non-streaming →
+/// `.choices[0].message.content`. The API key is OPTIONAL (keyless local
+/// servers like LM Studio): `Authorization` is only sent when a key is present.
 fn complete_openai(
     cfg: &AiConfig,
     api_key: Option<&str>,
     system: Option<&str>,
     prompt: &str,
 ) -> AppResult<String> {
-    let key = require_key("OpenAI", api_key)?;
     let url = format!("{}/v1/chat/completions", base(cfg));
+    let key = api_key.filter(|k| !k.is_empty());
     let body = json!({
         "model": cfg.model,
         "messages": chat_messages(system, prompt),
+        "max_tokens": cfg.max_tokens,
     });
-    let resp: Value = agent()
-        .post(&url)
-        .set("Authorization", &format!("Bearer {key}"))
-        .send_json(body)
-        .map_err(|e| map_ureq_err("OpenAI", e))?
-        .into_json()
-        .map_err(|e| AppError::Ai(format!("OpenAI returned invalid JSON: {e}")))?;
+    let resp = with_retry("OpenAI", || {
+        let mut req = agent().post(&url);
+        if let Some(k) = key {
+            req = req.set("Authorization", &format!("Bearer {k}"));
+        }
+        req.send_json(body.clone())
+    })?;
+    let resp = into_json("OpenAI", resp)?;
     require_text("OpenAI", resp.pointer("/choices/0/message/content"))
 }
 
@@ -235,7 +359,7 @@ fn complete_anthropic(
     let url = format!("{}/v1/messages", base(cfg));
     let mut body = json!({
         "model": cfg.model,
-        "max_tokens": 1024,
+        "max_tokens": cfg.max_tokens,
         "messages": [{ "role": "user", "content": prompt }],
     });
     if let Some(sys) = system {
@@ -243,15 +367,140 @@ fn complete_anthropic(
             body["system"] = json!(sys);
         }
     }
-    let resp: Value = agent()
-        .post(&url)
-        .set("x-api-key", key)
-        .set("anthropic-version", "2023-06-01")
-        .send_json(body)
-        .map_err(|e| map_ureq_err("Anthropic", e))?
-        .into_json()
-        .map_err(|e| AppError::Ai(format!("Anthropic returned invalid JSON: {e}")))?;
+    let resp = with_retry("Anthropic", || {
+        agent()
+            .post(&url)
+            .set("x-api-key", key)
+            .set("anthropic-version", "2023-06-01")
+            .send_json(body.clone())
+    })?;
+    let resp = into_json("Anthropic", resp)?;
     require_text("Anthropic", resp.pointer("/content/0/text"))
+}
+
+/// Azure OpenAI: `POST {base_url}/openai/deployments/{model}/chat/completions`
+/// `?api-version=...` with an `api-key` header, non-streaming →
+/// `.choices[0].message.content`. Requires a key (and https unless loopback).
+fn complete_azure(
+    cfg: &AiConfig,
+    api_key: Option<&str>,
+    system: Option<&str>,
+    prompt: &str,
+) -> AppResult<String> {
+    let key = require_key("Azure OpenAI", api_key)?;
+    let url = format!(
+        "{}/openai/deployments/{}/chat/completions?api-version={}",
+        base(cfg),
+        cfg.model,
+        cfg.azure_api_version()
+    );
+    let body = json!({
+        "messages": chat_messages(system, prompt),
+        "max_tokens": cfg.max_tokens,
+    });
+    let resp = with_retry("Azure OpenAI", || {
+        agent()
+            .post(&url)
+            .set("api-key", key)
+            .send_json(body.clone())
+    })?;
+    let resp = into_json("Azure OpenAI", resp)?;
+    require_text("Azure OpenAI", resp.pointer("/choices/0/message/content"))
+}
+
+/// Google Gemini: `POST {base_url}/v1beta/models/{model}:generateContent`
+/// `?key={key}`, non-streaming → `.candidates[0].content.parts[0].text`. The
+/// system prompt (if any) goes in `systemInstruction`. Requires a key + https.
+fn complete_gemini(
+    cfg: &AiConfig,
+    api_key: Option<&str>,
+    system: Option<&str>,
+    prompt: &str,
+) -> AppResult<String> {
+    let key = require_key("Gemini", api_key)?;
+    let url = format!(
+        "{}/v1beta/models/{}:generateContent?key={}",
+        base(cfg),
+        cfg.model,
+        key
+    );
+    let mut body = json!({
+        "contents": [{ "role": "user", "parts": [{ "text": prompt }] }],
+        "generationConfig": { "maxOutputTokens": cfg.max_tokens },
+    });
+    if let Some(sys) = system {
+        if !sys.is_empty() {
+            body["systemInstruction"] = json!({ "parts": [{ "text": sys }] });
+        }
+    }
+    let resp = with_retry("Gemini", || agent().post(&url).send_json(body.clone()))?;
+    let resp = into_json("Gemini", resp)?;
+    require_text("Gemini", resp.pointer("/candidates/0/content/parts/0/text"))
+}
+
+/// Ollama: `GET {base_url}/api/tags` → `.models[].name`.
+fn list_models_ollama(cfg: &AiConfig) -> AppResult<Vec<String>> {
+    let url = format!("{}/api/tags", base(cfg));
+    let resp = with_retry("Ollama", || agent().get(&url).call())?;
+    let resp = into_json("Ollama", resp)?;
+    collect_model_names("Ollama", &resp, "/models", "name")
+}
+
+/// OpenAI-compatible: `GET {base_url}/v1/models` (Bearer if a key is set) →
+/// `.data[].id`.
+fn list_models_openai(cfg: &AiConfig, api_key: Option<&str>) -> AppResult<Vec<String>> {
+    let url = format!("{}/v1/models", base(cfg));
+    let key = api_key.filter(|k| !k.is_empty());
+    let resp = with_retry("OpenAI", || {
+        let mut req = agent().get(&url);
+        if let Some(k) = key {
+            req = req.set("Authorization", &format!("Bearer {k}"));
+        }
+        req.call()
+    })?;
+    let resp = into_json("OpenAI", resp)?;
+    collect_model_names("OpenAI", &resp, "/data", "id")
+}
+
+/// Anthropic: `GET {base_url}/v1/models` (x-api-key + anthropic-version) →
+/// `.data[].id`.
+fn list_models_anthropic(cfg: &AiConfig, api_key: Option<&str>) -> AppResult<Vec<String>> {
+    let key = require_key("Anthropic", api_key)?;
+    let url = format!("{}/v1/models", base(cfg));
+    let resp = with_retry("Anthropic", || {
+        agent()
+            .get(&url)
+            .set("x-api-key", key)
+            .set("anthropic-version", "2023-06-01")
+            .call()
+    })?;
+    let resp = into_json("Anthropic", resp)?;
+    collect_model_names("Anthropic", &resp, "/data", "id")
+}
+
+/// Azure OpenAI: `GET {base_url}/openai/models?api-version=...` (api-key header)
+/// → `.data[].id`.
+fn list_models_azure(cfg: &AiConfig, api_key: Option<&str>) -> AppResult<Vec<String>> {
+    let key = require_key("Azure OpenAI", api_key)?;
+    let url = format!(
+        "{}/openai/models?api-version={}",
+        base(cfg),
+        cfg.azure_api_version()
+    );
+    let resp = with_retry("Azure OpenAI", || {
+        agent().get(&url).set("api-key", key).call()
+    })?;
+    let resp = into_json("Azure OpenAI", resp)?;
+    collect_model_names("Azure OpenAI", &resp, "/data", "id")
+}
+
+/// Gemini: `GET {base_url}/v1beta/models?key=...` → `.models[].name`.
+fn list_models_gemini(cfg: &AiConfig, api_key: Option<&str>) -> AppResult<Vec<String>> {
+    let key = require_key("Gemini", api_key)?;
+    let url = format!("{}/v1beta/models?key={}", base(cfg), key);
+    let resp = with_retry("Gemini", || agent().get(&url).call())?;
+    let resp = into_json("Gemini", resp)?;
+    collect_model_names("Gemini", &resp, "/models", "name")
 }
 
 #[cfg(test)]
@@ -333,6 +582,96 @@ mod tests {
         assert!(
             validate_base_url(&cfg_with(AiProvider::Ollama, "http://192.168.1.5:11434")).is_ok()
         );
+    }
+
+    #[test]
+    fn validate_new_cloud_providers_require_https_except_localhost() {
+        // Azure / Gemini over plain http to a remote host: rejected.
+        assert!(
+            validate_base_url(&cfg_with(AiProvider::Azure, "http://my.openai.azure.com")).is_err()
+        );
+        assert!(validate_base_url(&cfg_with(
+            AiProvider::Gemini,
+            "http://generativelanguage.googleapis.com"
+        ))
+        .is_err());
+        // Over https: allowed.
+        assert!(
+            validate_base_url(&cfg_with(AiProvider::Azure, "https://my.openai.azure.com")).is_ok()
+        );
+        assert!(validate_base_url(&cfg_with(
+            AiProvider::Gemini,
+            "https://generativelanguage.googleapis.com"
+        ))
+        .is_ok());
+        // Over http to loopback: allowed (proxy / dev).
+        assert!(validate_base_url(&cfg_with(AiProvider::Azure, "http://localhost:8080")).is_ok());
+        assert!(validate_base_url(&cfg_with(AiProvider::Gemini, "http://127.0.0.1:9000")).is_ok());
+    }
+
+    #[test]
+    fn openai_key_is_optional() {
+        // Unlike Anthropic/Azure/Gemini, the OpenAI provider must NOT hard-require
+        // a key (keyless local servers). require_key is only used by the others.
+        assert!(require_key("Anthropic", None).is_err());
+        assert!(require_key("Azure OpenAI", None).is_err());
+        assert!(require_key("Gemini", None).is_err());
+    }
+
+    #[test]
+    fn retryable_only_for_429_5xx_and_transport() {
+        // Build Status errors via the public ureq constructor.
+        let resp_429 = ureq::Response::new(429, "Too Many Requests", "slow down").unwrap();
+        let resp_500 = ureq::Response::new(500, "Server Error", "boom").unwrap();
+        let resp_503 = ureq::Response::new(503, "Unavailable", "later").unwrap();
+        let resp_400 = ureq::Response::new(400, "Bad Request", "nope").unwrap();
+        let resp_401 = ureq::Response::new(401, "Unauthorized", "key?").unwrap();
+        let resp_404 = ureq::Response::new(404, "Not Found", "missing").unwrap();
+
+        assert!(is_retryable(&ureq::Error::Status(429, resp_429)));
+        assert!(is_retryable(&ureq::Error::Status(500, resp_500)));
+        assert!(is_retryable(&ureq::Error::Status(503, resp_503)));
+        assert!(!is_retryable(&ureq::Error::Status(400, resp_400)));
+        assert!(!is_retryable(&ureq::Error::Status(401, resp_401)));
+        assert!(!is_retryable(&ureq::Error::Status(404, resp_404)));
+    }
+
+    #[test]
+    fn retry_after_parses_seconds_only() {
+        assert_eq!(parse_retry_after_secs("5"), Some(5));
+        assert_eq!(parse_retry_after_secs("  12 "), Some(12));
+        assert_eq!(parse_retry_after_secs("0"), Some(0));
+        // HTTP-date form and garbage are ignored (fall back to exponential).
+        assert_eq!(
+            parse_retry_after_secs("Wed, 21 Oct 2025 07:28:00 GMT"),
+            None
+        );
+        assert_eq!(parse_retry_after_secs("soon"), None);
+        assert_eq!(parse_retry_after_secs(""), None);
+    }
+
+    #[test]
+    fn collect_model_names_extracts_and_filters() {
+        // OpenAI/Anthropic/Azure shape: .data[].id
+        let v = json!({
+            "data": [
+                { "id": "gpt-4o" },
+                { "id": "" },
+                { "name": "no-id-here" },
+                { "id": "gpt-4o-mini" },
+            ]
+        });
+        let names = collect_model_names("OpenAI", &v, "/data", "id").unwrap();
+        assert_eq!(names, vec!["gpt-4o", "gpt-4o-mini"]);
+
+        // Ollama/Gemini shape: .models[].name
+        let v = json!({ "models": [ { "name": "llama3.1" }, { "name": "qwen2" } ] });
+        let names = collect_model_names("Ollama", &v, "/models", "name").unwrap();
+        assert_eq!(names, vec!["llama3.1", "qwen2"]);
+
+        // Wrong shape errors clearly.
+        let v = json!({ "data": "not-an-array" });
+        assert!(collect_model_names("OpenAI", &v, "/data", "id").is_err());
     }
 
     #[test]

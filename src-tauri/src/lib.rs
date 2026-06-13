@@ -105,6 +105,7 @@ pub fn run() {
             commands::ai::ai_set_config,
             commands::ai::ai_test_connection,
             commands::ai::ai_complete,
+            commands::ai::ai_list_models,
             // sync (v4): E2E-encrypted, local-first bundle sync
             commands::sync::export_sync_bundle,
             commands::sync::import_sync_bundle,

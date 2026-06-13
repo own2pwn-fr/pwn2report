@@ -324,13 +324,17 @@ export interface SyncSummary {
 
 // ── AI assistance ─────────────────────────────────────────────────────────────
 
-export type AiProvider = "ollama" | "openai" | "anthropic";
+export type AiProvider = "ollama" | "openai" | "anthropic" | "azure" | "gemini";
 
 export interface AiConfig {
   enabled: boolean;
   provider: AiProvider;
   base_url: string;
   model: string;
+  /** Upper bound on tokens generated per completion. Backend default is 1024. */
+  max_tokens: number;
+  /** Azure OpenAI API version (e.g. "2024-06-01"). Only used by the azure provider. */
+  api_version?: string;
 }
 
 export interface AiConfigView extends AiConfig {

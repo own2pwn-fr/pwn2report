@@ -23,10 +23,26 @@ pub enum AiProvider {
     /// A local Ollama server (default). Nothing leaves the machine.
     #[default]
     Ollama,
-    /// Any OpenAI-compatible `/v1/chat/completions` endpoint.
+    /// Any OpenAI-compatible `/v1/chat/completions` endpoint. The API key is
+    /// optional so keyless local servers (LM Studio, etc.) work.
     Openai,
     /// Anthropic's `/v1/messages` API.
     Anthropic,
+    /// Azure OpenAI: `POST /openai/deployments/{model}/chat/completions`.
+    Azure,
+    /// Google Gemini: `POST /v1beta/models/{model}:generateContent`.
+    Gemini,
+}
+
+/// Default Azure OpenAI REST API version (recent stable).
+pub const DEFAULT_AZURE_API_VERSION: &str = "2024-06-01";
+
+/// Default max output tokens requested from the provider.
+pub const DEFAULT_MAX_TOKENS: u32 = 1024;
+
+/// Serde default for `max_tokens` (keeps older `ai.json` files loadable).
+fn default_max_tokens() -> u32 {
+    DEFAULT_MAX_TOKENS
 }
 
 /// Persisted AI configuration. The API key is **not** here (keychain only).
@@ -40,6 +56,14 @@ pub struct AiConfig {
     pub base_url: String,
     /// Model identifier to request.
     pub model: String,
+    /// Max output tokens to request. Used by Anthropic/Azure/Gemini (and as a
+    /// sensible cap elsewhere the API supports it). Defaulted for back-compat.
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+    /// Azure OpenAI REST API version (`api-version` query param). Only used by
+    /// the `azure` provider; `None` falls back to [`DEFAULT_AZURE_API_VERSION`].
+    #[serde(default)]
+    pub api_version: Option<String>,
 }
 
 impl Default for AiConfig {
@@ -49,7 +73,19 @@ impl Default for AiConfig {
             provider: AiProvider::Ollama,
             base_url: "http://localhost:11434".to_string(),
             model: "llama3.1".to_string(),
+            max_tokens: DEFAULT_MAX_TOKENS,
+            api_version: None,
         }
+    }
+}
+
+impl AiConfig {
+    /// Effective Azure API version: the configured value or the default.
+    pub fn azure_api_version(&self) -> &str {
+        self.api_version
+            .as_deref()
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_AZURE_API_VERSION)
     }
 }
 
@@ -99,6 +135,8 @@ mod tests {
         assert_eq!(cfg.provider, AiProvider::Ollama);
         assert_eq!(cfg.base_url, "http://localhost:11434");
         assert_eq!(cfg.model, "llama3.1");
+        assert_eq!(cfg.max_tokens, DEFAULT_MAX_TOKENS);
+        assert_eq!(cfg.api_version, None);
     }
 
     #[test]
@@ -108,6 +146,8 @@ mod tests {
             provider: AiProvider::Anthropic,
             base_url: "https://api.anthropic.com".to_string(),
             model: "claude-3-5-sonnet".to_string(),
+            max_tokens: 4096,
+            api_version: Some("2024-10-21".to_string()),
         };
         let json = serde_json::to_string(&cfg).unwrap();
         // Provider must serialize snake_case for the frontend union.
@@ -117,6 +157,8 @@ mod tests {
         assert_eq!(back.provider, cfg.provider);
         assert_eq!(back.base_url, cfg.base_url);
         assert_eq!(back.model, cfg.model);
+        assert_eq!(back.max_tokens, cfg.max_tokens);
+        assert_eq!(back.api_version, cfg.api_version);
     }
 
     #[test]
@@ -129,5 +171,41 @@ mod tests {
             serde_json::to_string(&AiProvider::Ollama).unwrap(),
             "\"ollama\""
         );
+        assert_eq!(
+            serde_json::to_string(&AiProvider::Azure).unwrap(),
+            "\"azure\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AiProvider::Gemini).unwrap(),
+            "\"gemini\""
+        );
+    }
+
+    #[test]
+    fn missing_new_fields_default_on_load() {
+        // An older `ai.json` that predates max_tokens/api_version must still load.
+        let raw = r#"{
+            "enabled": true,
+            "provider": "ollama",
+            "base_url": "http://localhost:11434",
+            "model": "llama3.1"
+        }"#;
+        let cfg: AiConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.max_tokens, DEFAULT_MAX_TOKENS);
+        assert_eq!(cfg.api_version, None);
+    }
+
+    #[test]
+    fn azure_api_version_falls_back_to_default() {
+        let mut cfg = AiConfig {
+            provider: AiProvider::Azure,
+            api_version: None,
+            ..AiConfig::default()
+        };
+        assert_eq!(cfg.azure_api_version(), DEFAULT_AZURE_API_VERSION);
+        cfg.api_version = Some(String::new());
+        assert_eq!(cfg.azure_api_version(), DEFAULT_AZURE_API_VERSION);
+        cfg.api_version = Some("2024-10-21".to_string());
+        assert_eq!(cfg.azure_api_version(), "2024-10-21");
     }
 }

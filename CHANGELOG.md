@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### AI provider depth
+- **More providers**: Azure OpenAI and Google Gemini (alongside Ollama / OpenAI-compatible / Anthropic);
+  the OpenAI key is now optional so keyless local servers (LM Studio) work.
+- **Model listing** (`ai_list_models`) fetches the provider's models into a picker; configurable
+  `max_tokens`; Azure `api_version`.
+- **Resilience**: retry with exponential backoff on 429/5xx (honoring `Retry-After`). Privacy posture
+  unchanged (off by default, key in keychain, SSRF/scheme guard extended to the new providers).
+
 ### Scanner-import robustness & data exports
 - **Importer trait + registry**: scanner formats register through an `Importer` trait + a small registry, so
   adding a format is one entry. `import::parse` now returns an `ImportOutcome { findings, warnings }`.
