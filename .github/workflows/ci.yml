@@ -62,6 +62,13 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # tauri-build validates the `externalBin` sidecar at build time (even for
+      # clippy/test), so the gitignored pandoc binary must be fetched first.
+      - name: Fetch pandoc sidecar
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: bash scripts/fetch-pandoc.sh
+
       - name: Format check
         run: cargo fmt --check
 
