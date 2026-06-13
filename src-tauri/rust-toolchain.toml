@@ -4,3 +4,6 @@
 [toolchain]
 channel = "1.89.0"
 profile = "minimal"
+# minimal profile omits rustfmt/clippy; list them so `cargo fmt`/`cargo clippy`
+# work locally and in CI without an extra `rustup component add` step.
+components = ["rustfmt", "clippy"]
