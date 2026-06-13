@@ -16,6 +16,7 @@ import type {
   Finding,
   FindingPatch,
   ImportFormat,
+  ImportSummary,
   IpcError,
   KbEntry,
   KbPatch,
@@ -207,6 +208,10 @@ export const exportMarkdown = (reportId: string) =>
 
 export const exportHtml = (reportId: string) => invoke<string>("export_html", { reportId });
 
+export const exportCsv = (reportId: string) => invoke<string>("export_csv", { reportId });
+
+export const exportSarif = (reportId: string) => invoke<string>("export_sarif", { reportId });
+
 // ── Security ───────────────────────────────────────────────────────────────
 
 export const changePassphrase = (oldPassphrase: string, newPassphrase: string) =>
@@ -283,9 +288,9 @@ export const reorderEvidenceImages = (findingId: string, orderedIds: string[]) =
 
 // ── Scanner import ───────────────────────────────────────────────────────────
 
-/** Import scanner output into a report. Resolves to the imported finding count. */
+/** Import scanner output into a report. Resolves to an {@link ImportSummary}. */
 export const importFindings = (reportId: string, format: ImportFormat, content: string) =>
-  invoke<number>("import_findings", { reportId, format, content });
+  invoke<ImportSummary>("import_findings", { reportId, format, content });
 
 // ── AI assistance ──────────────────────────────────────────────────────────────
 

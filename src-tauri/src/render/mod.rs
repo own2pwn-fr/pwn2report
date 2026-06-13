@@ -4,12 +4,14 @@
 //! added later; only the Typst-backed PDF renderer exists today.
 
 pub mod content_model;
+pub mod csv;
 pub mod cvss;
 pub mod docx;
 pub mod html;
 pub mod labels;
 pub mod markdown;
 pub mod markup;
+pub mod sarif;
 pub mod typst_pdf;
 
 use crate::error::AppResult;

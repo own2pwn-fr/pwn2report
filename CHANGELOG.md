@@ -5,6 +5,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Scanner-import robustness & data exports
+- **Importer trait + registry**: scanner formats register through an `Importer` trait + a small registry, so
+  adding a format is one entry. `import::parse` now returns an `ImportOutcome { findings, warnings }`.
+- **Per-record fault tolerance**: a single malformed record (bad JSONL line, missing title, …) is now SKIPPED
+  with a warning instead of aborting the whole file. The `import_findings` command returns
+  `{ imported, skipped, deduped, warnings }`.
+- **Import dedup**: a stable content fingerprint (`title|cwe|cve|primary-evidence-file|severity`) drops exact
+  duplicates both within a file and against findings already in the target report.
+- **New `Dast` finding kind**: zap/burp/nuclei/nessus now map to `dast`; sarif → `sast`; secai as-provided;
+  generic CSV → `manual` (or a `kind` column).
+- **Capture all locations**: SARIF multi-location results, ZAP instance URLs, and Burp/Nessus hosts are
+  collected (primary in evidence, the rest appended) so dozens of affected URLs/hosts aren't reduced to one.
+- **SARIF**: reads `properties.security-severity` (0–10) for severity, resolves rules via `ruleIndex` (CodeQL)
+  when `ruleId` is absent, and reads CWE from `result.taxa`/`properties` too.
+- **Burp**: extracts CWE from `<vulnerabilityClassifications>` and maps `confidence`
+  (Certain/Firm/Tentative → High/Medium/Low).
+- **Generic CSV importer** (`format="csv"`): header-driven, case-insensitive column mapping (title/name,
+  severity, description, cwe, cve, cvss, host/url, remediation/solution, kind); unknown columns ignored,
+  row errors → warnings.
+- **Offline CWE name table** (`resources/cwe/cwe-names.json`, ~135 ids): imported findings are annotated with
+  the weakness name (e.g. "CWE-89: SQL Injection").
+- **New data exports**: `export_csv` (one row per finding) and `export_sarif` (minimal valid SARIF 2.1.0),
+  pure functions over the render IR alongside the existing PDF/MD/HTML/DOCX exporters.
+
 ### Retest workflow, cloning, custom fields & compliance mappings
 - **Retest workflow**: per-finding `retest_status`
   (not_retested/fixed/partially_fixed/not_fixed/risk_accepted) + `retest_date`, shown as a localized badge

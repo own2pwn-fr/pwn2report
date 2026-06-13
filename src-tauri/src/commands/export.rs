@@ -11,7 +11,9 @@ use super::templates::resolve_template_source;
 use crate::db;
 use crate::error::AppResult;
 use crate::render::content_model::ImageSource;
-use crate::render::{content_model, docx, html, markdown, typst_pdf::PdfRenderer, Renderer};
+use crate::render::{
+    content_model, csv, docx, html, markdown, sarif, typst_pdf::PdfRenderer, Renderer,
+};
 use crate::state::AppState;
 
 /// Build the `ReportDocument` IR for a report id (fetch report + findings +
@@ -94,4 +96,18 @@ pub fn export_html(state: State<'_, AppState>, report_id: String) -> AppResult<S
 pub fn export_docx(state: State<'_, AppState>, report_id: String) -> AppResult<Vec<u8>> {
     let doc = build_doc(&state, &report_id)?;
     docx::to_docx(&doc)
+}
+
+/// Export a report's findings as a CSV string (one row per finding).
+#[tauri::command]
+pub fn export_csv(state: State<'_, AppState>, report_id: String) -> AppResult<String> {
+    let doc = build_doc(&state, &report_id)?;
+    Ok(csv::to_csv(&doc))
+}
+
+/// Export a report's findings as a minimal SARIF 2.1.0 document string.
+#[tauri::command]
+pub fn export_sarif(state: State<'_, AppState>, report_id: String) -> AppResult<String> {
+    let doc = build_doc(&state, &report_id)?;
+    Ok(sarif::to_sarif(&doc))
 }

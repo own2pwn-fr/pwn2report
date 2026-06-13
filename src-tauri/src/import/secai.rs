@@ -2,91 +2,135 @@
 //!
 //! The secai-core `Finding` shape and our [`NewFinding`] already align on field
 //! names and the structured sub-object shapes (description facets, remediation,
-//! evidence, poc), all snake_case. We deserialize the reportable subset and
-//! ignore secai-only fields (scan_id, fingerprint, lifecycle, taint_chain, …).
+//! evidence, poc), all snake_case. We deserialize leniently into a
+//! `serde_json::Value` and map field-by-field, so one bad/uppercase/missing
+//! field never aborts the whole batch — that record is skipped with a warning.
 
-use serde::Deserialize;
 use serde_json::Value;
 
+use super::{annotate_cwe_name, normalize_cve, normalize_cwe, severity_from_label, ImportOutcome};
 use crate::error::{AppError, AppResult};
 use crate::models::{
     Confidence, Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding,
-    Severity, StructuredPoc, TriageStatus,
+    StructuredPoc, TriageStatus,
 };
 
-/// The reportable subset of a secai `Finding`. Unknown fields are ignored by
-/// serde (no `deny_unknown_fields`), so secai-only fields pass through harmlessly.
-#[derive(Debug, Deserialize)]
-struct SecaiFinding {
-    title: String,
-    severity: Severity,
-    #[serde(default)]
-    confidence: Option<Confidence>,
-    #[serde(default)]
-    kind: Option<FindingKind>,
-    #[serde(default)]
-    cwe: Option<String>,
-    #[serde(default)]
-    cve: Option<String>,
-    #[serde(default)]
-    cvss_vector: Option<String>,
-    #[serde(default)]
-    cvss_score: Option<f64>,
-    #[serde(default)]
-    triage_status: Option<TriageStatus>,
-    #[serde(default)]
-    triage_note: Option<String>,
-    #[serde(default)]
-    description: Option<FindingDescription>,
-    #[serde(default)]
-    remediation: Option<FindingRemediation>,
-    #[serde(default)]
-    evidence: Option<Evidence>,
-    #[serde(default)]
-    poc: Option<StructuredPoc>,
-    #[serde(default)]
-    refs: Option<Vec<String>>,
-    #[serde(default)]
-    tags: Option<Vec<String>>,
+fn str_field(v: &Value, key: &str) -> Option<String> {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
 }
 
-impl From<SecaiFinding> for NewFinding {
-    fn from(s: SecaiFinding) -> Self {
-        // Tag the source while preserving any tags secai already carried.
-        let mut tags = s.tags.unwrap_or_default();
-        if !tags.iter().any(|t| t == "imported") {
-            tags.push("imported".into());
-        }
-        if !tags.iter().any(|t| t == "secai") {
-            tags.push("secai".into());
-        }
-        NewFinding {
-            title: s.title,
-            severity: s.severity,
-            confidence: s.confidence,
-            // secai findings come from scanners; default to sast if unset.
-            kind: Some(s.kind.unwrap_or(FindingKind::Sast)),
-            cwe: s.cwe,
-            cve: s.cve,
-            cvss_vector: s.cvss_vector,
-            cvss_score: s.cvss_score,
-            triage_status: s.triage_status,
-            triage_note: s.triage_note,
-            description: s.description,
-            remediation: s.remediation,
-            evidence: s.evidence,
-            poc: s.poc,
-            refs: s.refs,
-            tags: Some(tags),
-            retest_status: None,
-            retest_date: None,
-            custom_fields: None,
-            mappings: None,
-        }
+/// Lenient confidence parse: label-based, defaults to `None` on absence.
+fn confidence_of(v: &Value) -> Option<Confidence> {
+    match str_field(v, "confidence")?.to_ascii_lowercase().as_str() {
+        "low" => Some(Confidence::Low),
+        "high" => Some(Confidence::High),
+        _ => Some(Confidence::Medium),
     }
 }
 
-pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
+/// Lenient kind parse (label-based, case-insensitive). Unknown → None (caller
+/// applies the default).
+fn kind_of(v: &Value) -> Option<FindingKind> {
+    match str_field(v, "kind")?.to_ascii_lowercase().as_str() {
+        "sast" => Some(FindingKind::Sast),
+        "dast" => Some(FindingKind::Dast),
+        "iac" => Some(FindingKind::Iac),
+        "sca" => Some(FindingKind::Sca),
+        "secret" => Some(FindingKind::Secret),
+        "manual" => Some(FindingKind::Manual),
+        _ => None,
+    }
+}
+
+fn triage_of(v: &Value) -> Option<TriageStatus> {
+    match str_field(v, "triage_status")?.to_ascii_lowercase().as_str() {
+        "acknowledged" => Some(TriageStatus::Acknowledged),
+        "false_positive" => Some(TriageStatus::FalsePositive),
+        "resolved" => Some(TriageStatus::Resolved),
+        "open" => Some(TriageStatus::Open),
+        _ => None,
+    }
+}
+
+/// Map one secai Finding `Value` into a [`NewFinding`], leniently. Returns
+/// `None` (with no panic) only when the mandatory `title` is missing/empty.
+fn map_one(v: &Value) -> Option<NewFinding> {
+    let title = str_field(v, "title")?;
+
+    // Severity is label-based and case-insensitive; missing/unknown → Medium.
+    let severity = severity_from_label(&str_field(v, "severity").unwrap_or_default());
+
+    let cwe = str_field(v, "cwe").and_then(|s| normalize_cwe(&s));
+    let cve = str_field(v, "cve").and_then(|s| normalize_cve(&s));
+
+    // Structured sub-objects: deserialize leniently, defaulting on shape errors.
+    let description: Option<FindingDescription> = v
+        .get("description")
+        .and_then(|d| serde_json::from_value(d.clone()).ok());
+    let remediation: Option<FindingRemediation> = v
+        .get("remediation")
+        .and_then(|r| serde_json::from_value(r.clone()).ok());
+    let evidence: Option<Evidence> = v
+        .get("evidence")
+        .and_then(|e| serde_json::from_value(e.clone()).ok());
+    let poc: Option<StructuredPoc> = v
+        .get("poc")
+        .and_then(|p| serde_json::from_value(p.clone()).ok());
+
+    let refs: Option<Vec<String>> = v.get("refs").and_then(|r| r.as_array()).map(|a| {
+        a.iter()
+            .filter_map(|x| x.as_str().map(String::from))
+            .collect()
+    });
+
+    // Tag the source while preserving any tags secai already carried.
+    let mut tags: Vec<String> = v
+        .get("tags")
+        .and_then(|t| t.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !tags.iter().any(|t| t == "imported") {
+        tags.push("imported".into());
+    }
+    if !tags.iter().any(|t| t == "secai") {
+        tags.push("secai".into());
+    }
+
+    let mut f = NewFinding {
+        title,
+        severity,
+        confidence: confidence_of(v),
+        // secai findings come from scanners; default to sast if unset.
+        kind: Some(kind_of(v).unwrap_or(FindingKind::Sast)),
+        cwe,
+        cve,
+        cvss_vector: str_field(v, "cvss_vector"),
+        cvss_score: v.get("cvss_score").and_then(|s| s.as_f64()),
+        triage_status: triage_of(v),
+        triage_note: str_field(v, "triage_note"),
+        description,
+        remediation,
+        evidence,
+        poc,
+        refs,
+        tags: Some(tags),
+        retest_status: None,
+        retest_date: None,
+        custom_fields: None,
+        mappings: None,
+    };
+    annotate_cwe_name(&mut f);
+    Some(f)
+}
+
+pub fn parse(content: &str) -> AppResult<ImportOutcome> {
     let value: Value = serde_json::from_str(content)
         .map_err(|e| AppError::Import(format!("invalid secai JSON: {e}")))?;
 
@@ -101,11 +145,12 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
         }
     };
 
-    let mut findings = Vec::with_capacity(items.len());
-    for item in items {
-        let parsed: SecaiFinding = serde_json::from_value(item)
-            .map_err(|e| AppError::Import(format!("invalid secai Finding: {e}")))?;
-        findings.push(parsed.into());
+    let mut out = ImportOutcome::new();
+    for (i, item) in items.into_iter().enumerate() {
+        match map_one(&item) {
+            Some(f) => out.push(f),
+            None => out.warn(format!("secai record #{}: skipped (missing title)", i + 1)),
+        }
     }
-    Ok(findings)
+    Ok(out)
 }

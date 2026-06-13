@@ -14,6 +14,8 @@ import {
   aiSetConfig,
   asIpcError,
   createReport,
+  exportCsv,
+  exportSarif,
   getReport,
   importFindings,
   listFindings,
@@ -56,6 +58,16 @@ describe("ipc wrappers map to the right command + camelCase args", () => {
       format: "sarif",
       content: "{}",
     });
+  });
+
+  it("exportCsv passes the camelCase reportId arg", async () => {
+    await exportCsv("rep-3");
+    expect(invoke).toHaveBeenCalledWith("export_csv", { reportId: "rep-3" });
+  });
+
+  it("exportSarif passes the camelCase reportId arg", async () => {
+    await exportSarif("rep-4");
+    expect(invoke).toHaveBeenCalledWith("export_sarif", { reportId: "rep-4" });
   });
 
   it("addEvidenceImage maps caption/mime/data alongside findingId", async () => {

@@ -6,8 +6,8 @@
 
 use serde_json::Value;
 
-use super::{normalize_cve, normalize_cwe, severity_from_label};
-use crate::error::{AppError, AppResult};
+use super::{annotate_cwe_name, normalize_cve, normalize_cwe, severity_from_label, ImportOutcome};
+use crate::error::AppResult;
 use crate::models::{Evidence, FindingDescription, FindingKind, NewFinding};
 
 /// Pull the first id from a classification field that may be a string, a single
@@ -22,13 +22,14 @@ fn first_classification(class: &Value, key: &str) -> Option<String> {
     }
 }
 
-fn parse_line(line: &str) -> AppResult<Option<NewFinding>> {
+/// Parse one JSONL line. `Ok(None)` = blank line; `Err(msg)` = a malformed line
+/// that the caller turns into a per-line warning (NOT a whole-file abort).
+fn parse_line(line: &str) -> Result<Option<NewFinding>, String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let v: Value = serde_json::from_str(trimmed)
-        .map_err(|e| AppError::Import(format!("invalid nuclei JSONL line: {e}")))?;
+    let v: Value = serde_json::from_str(trimmed).map_err(|e| format!("invalid JSON ({e})"))?;
 
     let info = v.get("info");
 
@@ -111,11 +112,12 @@ fn parse_line(line: &str) -> AppResult<Option<NewFinding>> {
             .filter(|s| !s.is_empty()),
     });
 
-    Ok(Some(NewFinding {
+    let mut f = NewFinding {
         title,
         severity,
         confidence: None,
-        kind: Some(FindingKind::Sast),
+        // Nuclei is a dynamic (DAST) template scanner.
+        kind: Some(FindingKind::Dast),
         cwe,
         cve,
         cvss_vector,
@@ -139,15 +141,19 @@ fn parse_line(line: &str) -> AppResult<Option<NewFinding>> {
         retest_date: None,
         custom_fields: None,
         mappings: None,
-    }))
+    };
+    annotate_cwe_name(&mut f);
+    Ok(Some(f))
 }
 
-pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
-    let mut findings = Vec::new();
-    for line in content.lines() {
-        if let Some(f) = parse_line(line)? {
-            findings.push(f);
+pub fn parse(content: &str) -> AppResult<ImportOutcome> {
+    let mut out = ImportOutcome::new();
+    for (i, line) in content.lines().enumerate() {
+        match parse_line(line) {
+            Ok(Some(f)) => out.push(f),
+            Ok(None) => {}
+            Err(msg) => out.warn(format!("nuclei line {}: skipped ({msg})", i + 1)),
         }
     }
-    Ok(findings)
+    Ok(out)
 }

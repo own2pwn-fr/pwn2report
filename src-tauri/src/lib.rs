@@ -83,6 +83,8 @@ pub fn run() {
             commands::export::export_markdown,
             commands::export::export_html,
             commands::export::export_docx,
+            commands::export::export_csv,
+            commands::export::export_sarif,
             // templates
             commands::templates::list_templates,
             commands::templates::get_template,

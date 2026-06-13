@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use super::{normalize_cwe, severity_from_label};
+use super::{annotate_cwe_name, normalize_cwe, severity_from_label, ImportOutcome};
 use crate::error::{AppError, AppResult};
 use crate::models::{
     Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding, Severity,
@@ -92,30 +92,67 @@ fn alert_to_finding(alert: &Value) -> NewFinding {
         .filter(|s| s != "-1" && !s.is_empty())
         .and_then(|s| normalize_cwe(&s));
 
-    // First instance URI → evidence.
-    let evidence = alert
+    // Collect ALL instance URIs so dozens of affected URLs are not reduced to
+    // one. The first becomes the primary evidence file; the rest are appended to
+    // the evidence snippet (and the spillover count noted) and to `refs`.
+    let instance_uris: Vec<String> = alert
+        .get("instances")
+        .and_then(|i| i.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|inst| inst.get("uri").and_then(|u| u.as_str()))
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let first_inst_evidence = alert
         .get("instances")
         .and_then(|i| i.as_array())
         .and_then(|a| a.first())
-        .and_then(|inst| inst.get("uri").and_then(|u| u.as_str()))
-        .map(|uri| Evidence {
-            file: Some(uri.to_string()),
+        .and_then(|inst| inst.get("evidence").and_then(|e| e.as_str()))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let evidence = instance_uris.first().map(|uri| {
+        // Append the remaining affected URLs into the snippet so they survive.
+        let mut snippet = first_inst_evidence.clone().unwrap_or_default();
+        if instance_uris.len() > 1 {
+            if !snippet.is_empty() {
+                snippet.push_str("\n\n");
+            }
+            snippet.push_str(&format!(
+                "Affected URLs ({}):\n{}",
+                instance_uris.len(),
+                instance_uris.join("\n")
+            ));
+        }
+        Evidence {
+            file: Some(uri.clone()),
             start_line: None,
             end_line: None,
-            snippet: alert
-                .get("instances")
-                .and_then(|i| i.as_array())
-                .and_then(|a| a.first())
-                .and_then(|inst| inst.get("evidence").and_then(|e| e.as_str()))
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string()),
-        });
+            snippet: if snippet.is_empty() {
+                None
+            } else {
+                Some(snippet)
+            },
+        }
+    });
 
-    NewFinding {
+    // Surface every affected URL in refs too (deduped against scan references).
+    for uri in &instance_uris {
+        if !references.iter().any(|r| r == uri) {
+            references.push(uri.clone());
+        }
+    }
+
+    let mut f = NewFinding {
         title,
         severity,
         confidence: None,
-        kind: Some(FindingKind::Sast),
+        // ZAP is a dynamic web app scanner (DAST).
+        kind: Some(FindingKind::Dast),
         cwe,
         cve: None,
         cvss_vector: None,
@@ -143,10 +180,12 @@ fn alert_to_finding(alert: &Value) -> NewFinding {
         retest_date: None,
         custom_fields: None,
         mappings: None,
-    }
+    };
+    annotate_cwe_name(&mut f);
+    f
 }
 
-pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
+pub fn parse(content: &str) -> AppResult<ImportOutcome> {
     let doc: Value = serde_json::from_str(content)
         .map_err(|e| AppError::Import(format!("invalid ZAP JSON: {e}")))?;
 
@@ -157,13 +196,13 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
         _ => return Err(AppError::Import("ZAP report has no `site` entries".into())),
     };
 
-    let mut findings = Vec::new();
+    let mut out = ImportOutcome::new();
     for site in sites {
         if let Some(alerts) = site.get("alerts").and_then(|a| a.as_array()) {
             for alert in alerts {
-                findings.push(alert_to_finding(alert));
+                out.push(alert_to_finding(alert));
             }
         }
     }
-    Ok(findings)
+    Ok(out)
 }

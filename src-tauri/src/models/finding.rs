@@ -73,6 +73,9 @@ pub enum FindingKind {
     Iac,
     Sca,
     Secret,
+    /// Dynamic application/host security testing (DAST): web scanners (ZAP,
+    /// Burp), template scanners (Nuclei) and network/vuln scanners (Nessus).
+    Dast,
 }
 
 /// Retest disposition for a finding (the "did the fix land?" verdict of a

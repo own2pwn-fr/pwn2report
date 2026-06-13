@@ -115,8 +115,8 @@ fn e2e_import_sarif_adds_findings() {
         "results":[{"ruleId":"X","level":"error","message":{"text":"XSS"},
         "locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.js"},"region":{"startLine":2}}}]}]}]}"#;
     let parsed = crate::import::parse("sarif", sarif).unwrap();
-    assert_eq!(parsed.len(), 1);
-    for nf in parsed {
+    assert_eq!(parsed.findings.len(), 1);
+    for nf in parsed.findings {
         db::findings::create(&conn, &report_id, nf).unwrap();
     }
     let after = db::findings::list(&conn, &report_id).unwrap().len();
@@ -482,6 +482,50 @@ fn e2e_clone_finding_within_report() {
     // Report now has two findings.
     let all = db::findings::list(&conn, &report_id).unwrap();
     assert_eq!(all.len(), 2);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+/// Import dedup: the same SARIF file imported twice yields the findings once;
+/// the second pass counts them all as deduped (against the report's existing
+/// rows). And within one batch, exact duplicates collapse too.
+#[test]
+fn e2e_import_dedup_against_report_and_batch() {
+    let path = tmp("import-dedup");
+    let mut conn = connection::create_encrypted(&path, "master-pass").unwrap();
+    let (report_id, _) = seed_report_with_finding(&conn);
+    let before = db::findings::list(&conn, &report_id).unwrap().len();
+
+    // Two results, the SECOND a byte-identical duplicate of the first → 1 new.
+    let sarif = r#"{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},
+        "results":[
+          {"ruleId":"X","level":"error","message":{"text":"XSS"},
+           "locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.js"},"region":{"startLine":2}}}]},
+          {"ruleId":"X","level":"error","message":{"text":"XSS"},
+           "locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.js"},"region":{"startLine":2}}}]}
+        ]}]}"#;
+    let outcome = crate::import::parse("sarif", sarif).unwrap();
+    assert_eq!(outcome.findings.len(), 2, "parser keeps both results");
+    let (imported, deduped) =
+        db::findings::create_bulk_dedup(&mut conn, &report_id, outcome.findings).unwrap();
+    assert_eq!(imported, 1, "in-batch duplicate collapsed");
+    assert_eq!(deduped, 1);
+    assert_eq!(
+        db::findings::list(&conn, &report_id).unwrap().len(),
+        before + 1
+    );
+
+    // Re-import the same file: everything is now a dup of existing rows.
+    let outcome2 = crate::import::parse("sarif", sarif).unwrap();
+    let (imported2, deduped2) =
+        db::findings::create_bulk_dedup(&mut conn, &report_id, outcome2.findings).unwrap();
+    assert_eq!(imported2, 0);
+    assert_eq!(deduped2, 2);
+    assert_eq!(
+        db::findings::list(&conn, &report_id).unwrap().len(),
+        before + 1,
+        "re-import added nothing"
+    );
 
     let _ = std::fs::remove_file(&path);
 }

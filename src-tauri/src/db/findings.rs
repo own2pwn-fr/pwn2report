@@ -47,6 +47,7 @@ pub(crate) fn kind_str(k: FindingKind) -> &'static str {
         FindingKind::Iac => "iac",
         FindingKind::Sca => "sca",
         FindingKind::Secret => "secret",
+        FindingKind::Dast => "dast",
     }
 }
 pub(crate) fn kind_from(s: &str) -> FindingKind {
@@ -55,6 +56,7 @@ pub(crate) fn kind_from(s: &str) -> FindingKind {
         "iac" => FindingKind::Iac,
         "sca" => FindingKind::Sca,
         "secret" => FindingKind::Secret,
+        "dast" => FindingKind::Dast,
         _ => FindingKind::Manual,
     }
 }
@@ -445,14 +447,21 @@ pub fn create(conn: &Connection, report_id: &str, input: NewFinding) -> AppResul
     get(conn, &id)
 }
 
-/// Bulk-insert findings under `report_id` in one transaction, appending them
-/// after any existing findings with incrementing `sort_order`. Returns the
-/// number of findings inserted. Used by the scanner-import command.
-pub fn create_bulk(
+/// Bulk-insert findings under `report_id`, skipping any whose content
+/// fingerprint already exists in the report OR was already inserted earlier in
+/// this same batch. Runs in one transaction. Returns `(inserted, deduped)`.
+///
+/// The fingerprint (see [`crate::import::fingerprint`]) is a hash of
+/// `title | cwe | cve | primary-evidence-file | severity`, so re-importing the
+/// same scan — or two scanners reporting the same issue — collapses to one
+/// finding instead of piling up duplicates.
+pub fn create_bulk_dedup(
     conn: &mut Connection,
     report_id: &str,
     inputs: Vec<NewFinding>,
-) -> AppResult<usize> {
+) -> AppResult<(usize, usize)> {
+    use std::collections::HashSet;
+
     // Guard: parent must exist (yield a clean NotFound).
     let exists: bool = conn
         .query_row(
@@ -466,12 +475,31 @@ pub fn create_bulk(
         return Err(AppError::NotFound);
     }
 
+    // Seed the seen-set with the fingerprints of the report's existing findings.
+    let mut seen: HashSet<u64> = HashSet::new();
+    for f in list(conn, report_id)? {
+        seen.insert(crate::import::fingerprint(
+            &f.title,
+            f.cwe.as_deref(),
+            f.cve.as_deref(),
+            f.evidence.as_ref().and_then(|e| e.file.as_deref()),
+            f.severity,
+        ));
+    }
+
     let mut sort_order = next_sort_order(conn, report_id)?;
     let now = now_rfc3339();
     let tx = conn.transaction()?;
     let mut inserted = 0usize;
+    let mut deduped = 0usize;
 
     for input in inputs {
+        let fp = crate::import::finding_fingerprint(&input);
+        if !seen.insert(fp) {
+            deduped += 1;
+            continue;
+        }
+
         let id = Uuid::new_v4().to_string();
         let confidence = input.confidence.unwrap_or(Confidence::Medium);
         let kind = input.kind.unwrap_or(FindingKind::Manual);
@@ -534,7 +562,7 @@ pub fn create_bulk(
     }
 
     tx.commit()?;
-    Ok(inserted)
+    Ok((inserted, deduped))
 }
 
 /// Apply a partial update to a finding; returns the updated row.

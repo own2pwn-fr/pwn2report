@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::normalize_cwe;
+use super::{annotate_cwe_name, normalize_cwe, severity_from_score, ImportOutcome};
 use crate::error::{AppError, AppResult};
 use crate::models::{Evidence, FindingDescription, FindingKind, NewFinding, Severity};
 
@@ -74,7 +74,54 @@ fn rule_cwe(rule: &Value) -> Option<String> {
     None
 }
 
-pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
+/// Extract a CWE id from a result's own `taxa` / `properties` (some tools attach
+/// the weakness mapping per-result rather than on the rule definition).
+fn result_cwe(result: &Value) -> Option<String> {
+    if let Some(taxa) = result.get("taxa").and_then(|t| t.as_array()) {
+        for tax in taxa {
+            if let Some(id) = tax.get("id").and_then(|i| i.as_str()) {
+                if id.to_ascii_uppercase().contains("CWE") {
+                    if let Some(c) = normalize_cwe(id) {
+                        return Some(c);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(tags) = result
+        .get("properties")
+        .and_then(|p| p.get("tags"))
+        .and_then(|t| t.as_array())
+    {
+        for tag in tags {
+            if let Some(s) = tag.as_str() {
+                if s.to_ascii_uppercase().contains("CWE") {
+                    if let Some(c) = normalize_cwe(s) {
+                        return Some(c);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Read `properties.security-severity` (a 0–10 string the SARIF spec recommends
+/// and CodeQL/Semgrep emit) as an `f64`. Looks on the result first, then the
+/// rule definition.
+fn security_severity(result: &Value, rule: Option<&Value>) -> Option<f64> {
+    let read = |v: &Value| -> Option<f64> {
+        let p = v.get("properties")?.get("security-severity")?;
+        match p {
+            Value::String(s) => s.trim().parse::<f64>().ok(),
+            Value::Number(n) => n.as_f64(),
+            _ => None,
+        }
+    };
+    read(result).or_else(|| rule.and_then(read))
+}
+
+pub fn parse(content: &str) -> AppResult<ImportOutcome> {
     let doc: Value = serde_json::from_str(content)
         .map_err(|e| AppError::Import(format!("invalid SARIF JSON: {e}")))?;
 
@@ -83,11 +130,14 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
         .and_then(|r| r.as_array())
         .ok_or_else(|| AppError::Import("SARIF document has no `runs` array".into()))?;
 
-    let mut findings = Vec::new();
+    let mut out = ImportOutcome::new();
 
     for run in runs {
-        // Build a ruleId → rule object map from the driver (and any extensions).
+        // Build a ruleId → rule map AND a positional index → rule vec from the
+        // driver (and any extensions). CodeQL references rules by `ruleIndex`
+        // into the driver's `rules` array when `ruleId` is absent.
         let mut rules: HashMap<String, &Value> = HashMap::new();
+        let mut rules_by_index: Vec<&Value> = Vec::new();
         if let Some(tool) = run.get("tool") {
             let mut components = Vec::new();
             if let Some(driver) = tool.get("driver") {
@@ -99,6 +149,7 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             for comp in components {
                 if let Some(rule_arr) = comp.get("rules").and_then(|r| r.as_array()) {
                     for rule in rule_arr {
+                        rules_by_index.push(rule);
                         if let Some(id) = rule.get("id").and_then(|i| i.as_str()) {
                             rules.insert(id.to_string(), rule);
                         }
@@ -112,7 +163,7 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             None => continue,
         };
 
-        for result in results {
+        for (i, result) in results.iter().enumerate() {
             let rule_id = result
                 .get("ruleId")
                 .and_then(|r| r.as_str())
@@ -126,34 +177,58 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 .unwrap_or("")
                 .to_string();
 
-            // Title: prefer rule name, else the rule id, else a trimmed message.
-            let rule = rules.get(&rule_id).copied();
+            // Resolve the rule: by ruleId, else by ruleIndex (CodeQL).
+            let rule = rules.get(&rule_id).copied().or_else(|| {
+                result
+                    .get("ruleIndex")
+                    .and_then(|n| n.as_u64())
+                    .and_then(|idx| rules_by_index.get(idx as usize).copied())
+            });
+
+            // Title: prefer rule name, else the (resolved) rule id, else message.
+            let resolved_rule_id = rule
+                .and_then(|r| r.get("id").and_then(|i| i.as_str()))
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| rule_id.clone());
             let title = rule
                 .and_then(|r| r.get("name").and_then(|n| n.as_str()))
                 .map(|s| s.to_string())
                 .filter(|s| !s.is_empty())
-                .or_else(|| (!rule_id.is_empty()).then(|| rule_id.clone()))
+                .or_else(|| (!resolved_rule_id.is_empty()).then(|| resolved_rule_id.clone()))
                 .unwrap_or_else(|| first_line(&message, "SARIF result"));
 
-            // Severity: explicit result.level, else rule defaultConfiguration.level.
-            let level = result
-                .get("level")
-                .and_then(|l| l.as_str())
-                .or_else(|| {
-                    rule.and_then(|r| {
-                        r.get("defaultConfiguration")
-                            .and_then(|c| c.get("level"))
-                            .and_then(|l| l.as_str())
-                    })
-                })
-                .unwrap_or("warning");
-            let severity = level_to_severity(level);
+            if title.trim().is_empty() {
+                out.warn(format!("sarif result #{}: skipped (no rule/title)", i + 1));
+                continue;
+            }
 
-            let cwe = rule.and_then(rule_cwe);
+            // Severity: prefer the numeric `security-severity` (0–10, more
+            // accurate), else result.level, else the rule's default level.
+            let severity = match security_severity(result, rule) {
+                Some(score) => severity_from_score(score),
+                None => {
+                    let level = result
+                        .get("level")
+                        .and_then(|l| l.as_str())
+                        .or_else(|| {
+                            rule.and_then(|r| {
+                                r.get("defaultConfiguration")
+                                    .and_then(|c| c.get("level"))
+                                    .and_then(|l| l.as_str())
+                            })
+                        })
+                        .unwrap_or("warning");
+                    level_to_severity(level)
+                }
+            };
 
-            let evidence = first_location(result);
+            // CWE: rule taxa/properties, else the result's own taxa/properties.
+            let cwe = rule.and_then(rule_cwe).or_else(|| result_cwe(result));
 
-            findings.push(NewFinding {
+            let evidence = all_locations(result);
+
+            let mut f = NewFinding {
                 title,
                 severity,
                 confidence: None,
@@ -181,11 +256,56 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 retest_date: None,
                 custom_fields: None,
                 mappings: None,
-            });
+            };
+            annotate_cwe_name(&mut f);
+            out.push(f);
         }
     }
 
-    Ok(findings)
+    Ok(out)
+}
+
+/// Build evidence from a result's physical locations. The FIRST location is the
+/// primary (file/line/snippet); any additional locations are appended to the
+/// snippet so a result spanning multiple files/lines isn't reduced to one.
+fn all_locations(result: &Value) -> Option<Evidence> {
+    let locs = result.get("locations").and_then(|l| l.as_array())?;
+    let mut primary = first_location(result)?;
+
+    if locs.len() > 1 {
+        let extras: Vec<String> = locs
+            .iter()
+            .skip(1)
+            .filter_map(|loc| {
+                let phys = loc.get("physicalLocation")?;
+                let file = phys
+                    .get("artifactLocation")
+                    .and_then(|a| a.get("uri"))
+                    .and_then(|u| u.as_str())?;
+                let line = phys
+                    .get("region")
+                    .and_then(|r| r.get("startLine"))
+                    .and_then(|n| n.as_u64());
+                Some(match line {
+                    Some(l) => format!("{file}:{l}"),
+                    None => file.to_string(),
+                })
+            })
+            .collect();
+        if !extras.is_empty() {
+            let mut snippet = primary.snippet.clone().unwrap_or_default();
+            if !snippet.is_empty() {
+                snippet.push_str("\n\n");
+            }
+            snippet.push_str(&format!(
+                "Other locations ({}):\n{}",
+                extras.len(),
+                extras.join("\n")
+            ));
+            primary.snippet = Some(snippet);
+        }
+    }
+    Some(primary)
 }
 
 /// Extract file/line evidence from the first physical location of a result.

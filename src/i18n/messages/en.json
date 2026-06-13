@@ -126,6 +126,8 @@
     "formatDocx": "Word (DOCX)",
     "formatMarkdown": "Markdown",
     "formatHtml": "HTML",
+    "formatCsv": "CSV",
+    "formatSarif": "SARIF",
     "exportSuccess": "PDF exported successfully.",
     "exportSuccessFormat": "{{format}} exported successfully.",
     "exportError": "Could not export the report.",
@@ -223,6 +225,11 @@
       "noFile": "No file selected",
       "cta": "Import",
       "importing": "Importing…",
+      "auto": "Auto-detect",
+      "autoFailed": "Could not detect the format. Please pick one manually.",
+      "summary": "Imported {{imported}}, skipped {{skipped}}, deduped {{deduped}}.",
+      "warningsTitle_one": "{{count}} warning",
+      "warningsTitle_other": "{{count}} warnings",
       "success_one": "Imported {{count}} finding.",
       "success_other": "Imported {{count}} findings.",
       "error": "Could not import the findings."
@@ -390,7 +397,8 @@
     "zap": "OWASP ZAP",
     "burp": "Burp Suite",
     "nessus": "Nessus",
-    "secai": "secai"
+    "secai": "secai",
+    "csv": "CSV"
   },
   "kind": {
     "manual": "Manual",
@@ -498,7 +506,9 @@
       "pdf": "PDF",
       "docx": "Word document",
       "markdown": "Markdown",
-      "html": "HTML"
+      "html": "HTML",
+      "csv": "CSV spreadsheet",
+      "sarif": "SARIF log"
     }
   },
   "settings": {

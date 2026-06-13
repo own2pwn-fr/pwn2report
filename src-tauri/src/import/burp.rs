@@ -1,15 +1,23 @@
 //! Burp Suite XML export importer (roxmltree).
 //!
 //! Maps `issues/issue`: `name` → title, `severity`
-//! (High/Medium/Low/Information) → severity, `issueBackground` →
+//! (High/Medium/Low/Information) → severity, `confidence`
+//! (Certain/Firm/Tentative) → [`Confidence`], `issueBackground` →
 //! description, `remediationBackground` → remediation, `host` + `path` →
-//! evidence. Burp wraps many text fields in HTML and sometimes CDATA.
+//! evidence, and `vulnerabilityClassifications` (which embeds CWE links) → CWE.
+//! Burp emits one `<issue>` per affected location; same-type issues are merged
+//! so all affected URLs land on one finding. Burp wraps many text fields in
+//! HTML and sometimes CDATA.
+
+use std::collections::HashMap;
 
 use roxmltree::{Document, Node};
 
-use super::severity_from_label;
+use super::{annotate_cwe_name, normalize_cwe, severity_from_label, ImportOutcome};
 use crate::error::{AppError, AppResult};
-use crate::models::{Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding};
+use crate::models::{
+    Confidence, Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding,
+};
 
 /// Text content of the first direct child element named `tag`, trimmed and
 /// HTML-stripped. Returns empty string if absent.
@@ -43,11 +51,51 @@ fn strip_html(s: &str) -> String {
         .join(" ")
 }
 
-pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
+/// Map Burp's `confidence` label to our [`Confidence`]. Certain/Firm → High/
+/// Medium, Tentative → Low; anything else → None (caller defaults).
+fn confidence_from_label(label: &str) -> Option<Confidence> {
+    match label.trim().to_ascii_lowercase().as_str() {
+        "certain" => Some(Confidence::High),
+        "firm" => Some(Confidence::Medium),
+        "tentative" => Some(Confidence::Low),
+        _ => None,
+    }
+}
+
+/// Extract a CWE id from an `<issue>`. Burp records the weakness mapping inside
+/// `<vulnerabilityClassifications>`, whose HTML body links to CWE entries like
+/// `CWE-79: ...`. We scan the RAW (pre-strip) text for the first `CWE-<n>`.
+fn issue_cwe(issue: Node<'_, '_>) -> Option<String> {
+    let raw = issue
+        .children()
+        .find(|c| c.is_element() && c.has_tag_name("vulnerabilityClassifications"))
+        .and_then(|c| c.text())?;
+    // Find "CWE-" then read the trailing digits.
+    let upper = raw.to_ascii_uppercase();
+    let idx = upper.find("CWE-")?;
+    let digits: String = upper[idx + 4..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    if digits.is_empty() {
+        None
+    } else {
+        normalize_cwe(&digits)
+    }
+}
+
+/// An accumulator merging same-type issues across their affected locations.
+struct Acc {
+    finding: NewFinding,
+    locations: Vec<String>,
+}
+
+pub fn parse(content: &str) -> AppResult<ImportOutcome> {
     let doc =
         Document::parse(content).map_err(|e| AppError::Import(format!("invalid Burp XML: {e}")))?;
 
-    let mut findings = Vec::new();
+    let mut order: Vec<String> = Vec::new();
+    let mut by_type: HashMap<String, Acc> = HashMap::new();
 
     for issue in doc
         .descendants()
@@ -62,9 +110,37 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             }
         };
 
+        // Merge key: prefer the stable serialNumber-independent `type` element.
+        let key = {
+            let ty = child_text(issue, "type");
+            if ty.is_empty() {
+                title.clone()
+            } else {
+                ty
+            }
+        };
+
+        // host + path → location.
+        let host = child_text(issue, "host");
+        let path = child_text(issue, "path");
+        let location = match (host.is_empty(), path.is_empty()) {
+            (false, false) => format!("{host}{path}"),
+            (false, true) => host,
+            (true, false) => path,
+            (true, true) => String::new(),
+        };
+
+        if let Some(acc) = by_type.get_mut(&key) {
+            if !location.is_empty() && !acc.locations.contains(&location) {
+                acc.locations.push(location);
+            }
+            continue;
+        }
+
         let severity_label = child_text(issue, "severity");
         // Burp uses "Information" for info-level; severity_from_label handles it.
         let severity = severity_from_label(&severity_label);
+        let confidence = confidence_from_label(&child_text(issue, "confidence"));
 
         let background = child_text(issue, "issueBackground");
         let detail = child_text(issue, "issueDetail");
@@ -87,36 +163,15 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             }
         };
 
-        // host + path → evidence file (URL).
-        let host = child_text(issue, "host");
-        let path = child_text(issue, "path");
-        let location = match (host.is_empty(), path.is_empty()) {
-            (false, false) => format!("{host}{path}"),
-            (false, true) => host,
-            (true, false) => path,
-            (true, true) => String::new(),
-        };
-        let evidence = if location.is_empty() {
-            None
-        } else {
-            Some(Evidence {
-                file: Some(location),
-                start_line: None,
-                end_line: None,
-                snippet: if detail.is_empty() {
-                    None
-                } else {
-                    Some(detail)
-                },
-            })
-        };
+        let cwe = issue_cwe(issue);
 
-        findings.push(NewFinding {
+        let finding = NewFinding {
             title,
             severity,
-            confidence: None,
-            kind: Some(FindingKind::Sast),
-            cwe: None,
+            confidence,
+            // Burp is a dynamic web app scanner (DAST).
+            kind: Some(FindingKind::Dast),
+            cwe,
             cve: None,
             cvss_vector: None,
             cvss_score: None,
@@ -131,7 +186,16 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 code_patch: None,
                 references: Vec::new(),
             }),
-            evidence,
+            evidence: Some(Evidence {
+                file: None, // filled in at finalize from `locations`
+                start_line: None,
+                end_line: None,
+                snippet: if detail.is_empty() {
+                    None
+                } else {
+                    Some(detail)
+                },
+            }),
             poc: None,
             refs: None,
             tags: Some(vec!["imported".into(), "burp".into()]),
@@ -139,8 +203,52 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             retest_date: None,
             custom_fields: None,
             mappings: None,
-        });
+        };
+
+        order.push(key.clone());
+        by_type.insert(
+            key,
+            Acc {
+                finding,
+                locations: if location.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![location]
+                },
+            },
+        );
     }
 
-    Ok(findings)
+    let mut out = ImportOutcome::new();
+    for key in order {
+        let Acc {
+            mut finding,
+            locations,
+        } = by_type.remove(&key).expect("key present");
+
+        if let Some(ev) = finding.evidence.as_mut() {
+            if let Some(first) = locations.first() {
+                ev.file = Some(first.clone());
+            }
+            if locations.len() > 1 {
+                let mut snippet = ev.snippet.clone().unwrap_or_default();
+                if !snippet.is_empty() {
+                    snippet.push_str("\n\n");
+                }
+                snippet.push_str(&format!(
+                    "Affected URLs ({}):\n{}",
+                    locations.len(),
+                    locations.join("\n")
+                ));
+                ev.snippet = Some(snippet);
+            }
+            if ev.file.is_none() && ev.snippet.is_none() {
+                finding.evidence = None;
+            }
+        }
+        annotate_cwe_name(&mut finding);
+        out.push(finding);
+    }
+
+    Ok(out)
 }

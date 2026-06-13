@@ -6,9 +6,11 @@
 //! `cve` children → cve, `cvss3_base_score`/`cvss_base_score` and
 //! `cvss3_vector`/`cvss_vector` children → cvss. Host + port → evidence.
 
+use std::collections::HashMap;
+
 use roxmltree::{Document, Node};
 
-use super::normalize_cve;
+use super::{annotate_cwe_name, normalize_cve, ImportOutcome};
 use crate::error::{AppError, AppResult};
 use crate::models::{
     Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding, Severity,
@@ -44,11 +46,23 @@ fn child_texts(node: Node<'_, '_>, tag: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
+/// One plugin's finding, accumulated across every affected host so a network
+/// issue seen on 50 hosts is ONE finding listing all of them (rather than 50
+/// near-duplicate findings).
+struct Acc {
+    finding: NewFinding,
+    /// Affected host locations in first-seen order (primary is the evidence
+    /// file; the rest are appended to the snippet).
+    locations: Vec<String>,
+}
+
+pub fn parse(content: &str) -> AppResult<ImportOutcome> {
     let doc = Document::parse(content)
         .map_err(|e| AppError::Import(format!("invalid Nessus XML: {e}")))?;
 
-    let mut findings = Vec::new();
+    // Group ReportItems by (pluginID|pluginName) so repeats across hosts merge.
+    let mut order: Vec<String> = Vec::new();
+    let mut by_plugin: HashMap<String, Acc> = HashMap::new();
 
     for host in doc
         .descendants()
@@ -70,6 +84,39 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "Nessus finding".to_string());
+
+            // Merge key: prefer the stable pluginID, else the plugin name.
+            let key = item
+                .attribute("pluginID")
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| title.clone());
+
+            let port = item.attribute("port").unwrap_or("");
+            let protocol = item.attribute("protocol").unwrap_or("");
+            let svc = item.attribute("svc_name").unwrap_or("");
+            let location = {
+                let mut loc = host_name.clone();
+                if !port.is_empty() && port != "0" {
+                    loc.push(':');
+                    loc.push_str(port);
+                }
+                if !protocol.is_empty() {
+                    loc.push_str(&format!("/{protocol}"));
+                }
+                if !svc.is_empty() {
+                    loc.push_str(&format!(" ({svc})"));
+                }
+                loc
+            };
+
+            if let Some(acc) = by_plugin.get_mut(&key) {
+                // Existing plugin: just record another affected host location.
+                if !location.is_empty() && !acc.locations.contains(&location) {
+                    acc.locations.push(location);
+                }
+                continue;
+            }
 
             let summary = child_text(item, "description")
                 .or_else(|| child_text(item, "synopsis"))
@@ -102,39 +149,14 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                     .collect::<Vec<_>>()
             }));
 
-            let port = item.attribute("port").unwrap_or("");
-            let protocol = item.attribute("protocol").unwrap_or("");
-            let svc = item.attribute("svc_name").unwrap_or("");
-            let location = {
-                let mut loc = host_name.clone();
-                if !port.is_empty() && port != "0" {
-                    loc.push(':');
-                    loc.push_str(port);
-                }
-                if !protocol.is_empty() {
-                    loc.push_str(&format!("/{protocol}"));
-                }
-                if !svc.is_empty() {
-                    loc.push_str(&format!(" ({svc})"));
-                }
-                loc
-            };
-            let evidence = if location.is_empty() {
-                None
-            } else {
-                Some(Evidence {
-                    file: Some(location),
-                    start_line: None,
-                    end_line: None,
-                    snippet: child_text(item, "plugin_output"),
-                })
-            };
+            let snippet = child_text(item, "plugin_output");
 
-            findings.push(NewFinding {
+            let finding = NewFinding {
                 title,
                 severity,
                 confidence: None,
-                kind: Some(FindingKind::Sast),
+                // Nessus is a dynamic network/host vulnerability scanner (DAST).
+                kind: Some(FindingKind::Dast),
                 cwe,
                 cve,
                 cvss_vector,
@@ -150,7 +172,12 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                     code_patch: None,
                     references: references.clone(),
                 }),
-                evidence,
+                evidence: Some(Evidence {
+                    file: None, // filled in at finalize from `locations`
+                    start_line: None,
+                    end_line: None,
+                    snippet,
+                }),
                 poc: None,
                 refs: Some(references),
                 tags: Some(vec!["imported".into(), "nessus".into()]),
@@ -158,9 +185,55 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 retest_date: None,
                 custom_fields: None,
                 mappings: None,
-            });
+            };
+
+            order.push(key.clone());
+            by_plugin.insert(
+                key,
+                Acc {
+                    finding,
+                    locations: if location.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![location]
+                    },
+                },
+            );
         }
     }
 
-    Ok(findings)
+    // Finalize: fold the collected host locations into each finding's evidence.
+    let mut out = ImportOutcome::new();
+    for key in order {
+        let Acc {
+            mut finding,
+            locations,
+        } = by_plugin.remove(&key).expect("key present");
+
+        if let Some(ev) = finding.evidence.as_mut() {
+            if let Some(first) = locations.first() {
+                ev.file = Some(first.clone());
+            }
+            if locations.len() > 1 {
+                let mut snippet = ev.snippet.clone().unwrap_or_default();
+                if !snippet.is_empty() {
+                    snippet.push_str("\n\n");
+                }
+                snippet.push_str(&format!(
+                    "Affected hosts ({}):\n{}",
+                    locations.len(),
+                    locations.join("\n")
+                ));
+                ev.snippet = Some(snippet);
+            }
+            // Drop empty evidence (no host, no snippet).
+            if ev.file.is_none() && ev.snippet.is_none() {
+                finding.evidence = None;
+            }
+        }
+        annotate_cwe_name(&mut finding);
+        out.push(finding);
+    }
+
+    Ok(out)
 }

@@ -292,7 +292,15 @@ export interface EvidenceImage {
 }
 
 // Supported scanner import formats for `import_findings`.
-export type ImportFormat = "sarif" | "nuclei" | "zap" | "burp" | "nessus" | "secai";
+export type ImportFormat = "sarif" | "nuclei" | "zap" | "burp" | "nessus" | "secai" | "csv";
+
+// Outcome of a scanner import, returned by `import_findings`.
+export interface ImportSummary {
+  imported: number;
+  skipped: number;
+  deduped: number;
+  warnings: string[];
+}
 
 // Shape the Rust layer serializes its errors into.
 export interface IpcError {

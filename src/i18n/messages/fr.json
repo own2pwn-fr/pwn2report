@@ -126,6 +126,8 @@
     "formatDocx": "Word (DOCX)",
     "formatMarkdown": "Markdown",
     "formatHtml": "HTML",
+    "formatCsv": "CSV",
+    "formatSarif": "SARIF",
     "exportSuccess": "PDF exporté avec succès.",
     "exportSuccessFormat": "{{format}} exporté avec succès.",
     "exportError": "Impossible d'exporter le rapport.",
@@ -223,6 +225,11 @@
       "noFile": "Aucun fichier sélectionné",
       "cta": "Importer",
       "importing": "Import en cours…",
+      "auto": "Détection automatique",
+      "autoFailed": "Impossible de détecter le format. Veuillez en choisir un manuellement.",
+      "summary": "{{imported}} importée(s), {{skipped}} ignorée(s), {{deduped}} dédupliquée(s).",
+      "warningsTitle_one": "{{count}} avertissement",
+      "warningsTitle_other": "{{count}} avertissements",
       "success_one": "{{count}} vulnérabilité importée.",
       "success_other": "{{count}} vulnérabilités importées.",
       "error": "Impossible d'importer les vulnérabilités."
@@ -390,7 +397,8 @@
     "zap": "OWASP ZAP",
     "burp": "Burp Suite",
     "nessus": "Nessus",
-    "secai": "secai"
+    "secai": "secai",
+    "csv": "CSV"
   },
   "kind": {
     "manual": "Manuel",
@@ -498,7 +506,9 @@
       "pdf": "PDF",
       "docx": "Document Word",
       "markdown": "Markdown",
-      "html": "HTML"
+      "html": "HTML",
+      "csv": "Tableur CSV",
+      "sarif": "Journal SARIF"
     }
   },
   "settings": {

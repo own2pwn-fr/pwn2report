@@ -4132,6 +4132,7 @@ dependencies = [
  "age",
  "base64 0.22.1",
  "chrono",
+ "csv",
  "derive_typst_intoval",
  "keyring",
  "pulldown-cmark",

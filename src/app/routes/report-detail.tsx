@@ -181,6 +181,7 @@ export function ReportDetail() {
   const [editing, setEditing] = useState<Finding | undefined>(undefined);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [pendingDelete, setPendingDelete] = useState<Finding | null>(null);
 
   const commit = (patch: ReportPatch) =>
@@ -261,9 +262,17 @@ export function ReportDetail() {
     importFindingsM.mutate(
       { format, content },
       {
-        onSuccess: (count) => {
-          setImportOpen(false);
-          toast.success(t("findings.import.success", { count }));
+        onSuccess: (summary) => {
+          setImportWarnings(summary.warnings);
+          toast.success(
+            t("findings.import.summary", {
+              imported: summary.imported,
+              skipped: summary.skipped,
+              deduped: summary.deduped,
+            }),
+          );
+          // Keep the dialog open when there are warnings to review; otherwise close.
+          if (summary.warnings.length === 0) setImportOpen(false);
         },
         onError: (err) => toast.error(errorMessage(err, "findings.import.error")),
       },
@@ -419,7 +428,13 @@ export function ReportDetail() {
             <BookMarked />
             {t("findings.addFromKb")}
           </Button>
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setImportWarnings([]);
+              setImportOpen(true);
+            }}
+          >
             <FileUp />
             {t("findings.importCta")}
           </Button>
@@ -477,9 +492,13 @@ export function ReportDetail() {
 
       <ImportFindingsDialog
         open={importOpen}
-        onOpenChange={setImportOpen}
+        onOpenChange={(o) => {
+          setImportOpen(o);
+          if (!o) setImportWarnings([]);
+        }}
         onImport={handleImport}
         pending={importFindingsM.isPending}
+        warnings={importWarnings}
       />
 
       <ConfirmDialog
