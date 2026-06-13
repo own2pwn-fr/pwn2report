@@ -16,7 +16,10 @@
 //! Evidence images: pandoc does NOT embed data-URI images reliably, so each
 //! image is written to a per-call temp dir as a real file and referenced from
 //! the markdown by relative path; `--resource-path=<tmp>` lets pandoc resolve
-//! and embed them. The temp dir is removed on every exit path.
+//! and embed them. The temp dir is created private (mode 0700 on Unix) via
+//! [`tempfile::Builder`] and auto-removed on every exit path (including panic /
+//! early return) when the `TempDir` handle drops — so decrypted evidence never
+//! lands in a world-readable location nor leaks on error.
 //!
 //! This is the only renderer that performs I/O (subprocess + temp files), kept
 //! out of the pure `markdown`/`html` modules so those stay unit-testable.
@@ -82,18 +85,22 @@ fn image_filename(i: usize, j: usize, mime: &str) -> String {
 /// Evidence images are written to a per-call temp dir as real files and the
 /// markdown references them by relative path (pandoc does NOT embed data-URI
 /// images reliably); `--resource-path=<tempdir>` lets pandoc resolve and embed
-/// them. The reference styling doc lives in the same temp dir. The whole dir is
-/// removed on every exit path (success or error).
+/// them. The reference styling doc lives in the same temp dir.
+///
+/// The dir is created via [`tempfile::Builder`]: private (mode 0700 on Unix) and
+/// auto-removed when the [`tempfile::TempDir`] handle drops — on success, error,
+/// or panic — so decrypted evidence is never world-readable nor left behind.
 pub fn to_docx(doc: &ReportDocument) -> AppResult<Vec<u8>> {
-    // Per-call temp working dir holding the reference doc + image files.
-    let work_dir = std::env::temp_dir().join(format!("pwn2report-docx-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&work_dir)?;
+    // Per-call temp working dir holding the reference doc + image files. The
+    // TempDir guard removes it on drop (every exit path), and tempfile creates
+    // it with owner-only permissions (0700 on Unix).
+    let work_dir = tempfile::Builder::new()
+        .prefix("pwn2report-docx-")
+        .tempdir()
+        .map_err(|e| AppError::Io(format!("could not create temp dir for DOCX export: {e}")))?;
 
-    // Everything below may fail; ensure the temp dir is removed regardless by
-    // running the body in a closure and cleaning up afterwards.
-    let result = render_in_dir(doc, &work_dir);
-    let _ = std::fs::remove_dir_all(&work_dir);
-    result
+    render_in_dir(doc, work_dir.path())
+    // `work_dir` drops here, removing the directory and its contents.
 }
 
 /// Body of [`to_docx`], operating inside an already-created `work_dir`. The

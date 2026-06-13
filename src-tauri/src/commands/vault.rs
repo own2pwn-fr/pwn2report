@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
+use zeroize::Zeroizing;
 
 use super::vault_path;
 use crate::error::{AppError, AppResult};
@@ -37,6 +38,9 @@ pub fn create_vault(
     passphrase: String,
     remember: bool,
 ) -> AppResult<()> {
+    // Move the secret into a Zeroizing buffer so the plaintext copy is wiped on
+    // drop (Tauri requires the command param itself to be a plain `String`).
+    let passphrase = Zeroizing::new(passphrase);
     let path = vault_path(&app)?;
     if path.exists() {
         return Err(AppError::Db("vault already exists".into()));
@@ -59,6 +63,7 @@ pub fn unlock_vault(
     passphrase: String,
     remember: bool,
 ) -> AppResult<()> {
+    let passphrase = Zeroizing::new(passphrase);
     let path = vault_path(&app)?;
     if !path.exists() {
         return Err(AppError::NotFound);
@@ -81,7 +86,7 @@ pub fn unlock_with_keychain(app: AppHandle, state: State<'_, AppState>) -> AppRe
         return Ok(false);
     }
     let stored = match keychain::get() {
-        Ok(Some(p)) => p,
+        Ok(Some(p)) => Zeroizing::new(p),
         _ => return Ok(false),
     };
     match connection::open_encrypted(&path, &stored) {
@@ -129,6 +134,9 @@ pub fn change_passphrase(
     if !state.is_unlocked() {
         return Err(AppError::VaultLocked);
     }
+    // Move both secrets into Zeroizing buffers so the plaintext copies are wiped.
+    let old_passphrase = Zeroizing::new(old_passphrase);
+    let new_passphrase = Zeroizing::new(new_passphrase);
     let path = vault_path(&app)?;
 
     // Re-verify the old passphrase against the canary on a throwaway, read-only
@@ -137,10 +145,12 @@ pub fn change_passphrase(
     connection::verify_passphrase(&path, &old_passphrase)?;
 
     // Rekey the live connection in place (escape ' by doubling, as PRAGMAs
-    // cannot be parameter-bound).
-    let escaped = new_passphrase.replace('\'', "''");
+    // cannot be parameter-bound). Both the escaped key and the full PRAGMA
+    // string embed the new secret, so wrap them in Zeroizing to be wiped.
+    let escaped = Zeroizing::new(new_passphrase.replace('\'', "''"));
+    let pragma = Zeroizing::new(format!("PRAGMA rekey = '{}';", escaped.as_str()));
     state.with_conn(|conn| {
-        conn.execute_batch(&format!("PRAGMA rekey = '{escaped}';"))?;
+        conn.execute_batch(&pragma)?;
         Ok(())
     })?;
 

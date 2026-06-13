@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { IMAGE_EXTENSIONS, mimeFromPath, objectUrlFromBytes } from "./image";
+import {
+  IMAGE_EXTENSIONS,
+  mimeFromPath,
+  objectUrlFromBytes,
+  stripImageMetadata,
+} from "./image";
 
 describe("mimeFromPath", () => {
   it("maps known extensions to their MIME type", () => {
@@ -46,6 +51,33 @@ describe("IMAGE_EXTENSIONS", () => {
       expect(mimeFromPath(`file.${ext}`)).toMatch(/^image\//);
     }
   });
+});
+
+describe("stripImageMetadata", () => {
+  it("passes non-rasterizable formats (SVG) through untouched", async () => {
+    const bytes = [1, 2, 3, 4];
+    const out = await stripImageMetadata(bytes, "image/svg+xml");
+    expect(out.mime).toBe("image/svg+xml");
+    expect(out.bytes).toEqual(bytes);
+  });
+
+  it("passes animated GIF through untouched (avoids dropping animation)", async () => {
+    const bytes = [0x47, 0x49, 0x46];
+    const out = await stripImageMetadata(bytes, "image/gif");
+    expect(out.mime).toBe("image/gif");
+    expect(out.bytes).toEqual(bytes);
+  });
+
+  it("accepts a Uint8Array for passthrough formats", async () => {
+    const out = await stripImageMetadata(new Uint8Array([1, 2, 3]), "image/svg+xml");
+    expect(out.bytes).toEqual([1, 2, 3]);
+    expect(out.mime).toBe("image/svg+xml");
+  });
+
+  // NOTE: the strip path for PNG/JPEG/WebP/BMP/AVIF re-encodes through a real
+  // <canvas>/Image decoder, which the headless test DOM (happy-dom) does not
+  // implement — those branches are exercised in the Tauri webview at runtime,
+  // not here. The passthrough branches above are fully deterministic.
 });
 
 describe("objectUrlFromBytes", () => {

@@ -14,7 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { asIpcError } from "@/lib/ipc";
 import { canvasToPngBytes, objectUrlFromBytes } from "@/lib/image";
-import { useAddEvidenceImage, useEvidenceBytes } from "@/lib/queries/use-evidence";
+import {
+  useAddEvidenceImage,
+  useDeleteEvidenceImage,
+  useEvidenceBytes,
+} from "@/lib/queries/use-evidence";
 import type { EvidenceImage } from "@/lib/types";
 
 type Tool = "redact" | "box" | "arrow" | "pen";
@@ -97,6 +101,7 @@ export function Annotator({
   const { t } = useTranslation();
   const { data: bytes } = useEvidenceBytes(source.id);
   const addImage = useAddEvidenceImage(source.finding_id);
+  const deleteImage = useDeleteEvidenceImage(source.finding_id);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -215,11 +220,24 @@ export function Annotator({
     repaint();
     try {
       const data = await canvasToPngBytes(canvas);
+      // Add the flattened (redacted/annotated) image FIRST. The canvas export
+      // already drops any source metadata, and redactions are baked into the
+      // pixels here.
       await addImage.mutateAsync({
-        caption: source.caption + t("evidence.annotatedSuffix"),
+        caption: source.caption,
         mime: "image/png",
         data,
       });
+      // Only after the redacted version is safely persisted do we destroy the
+      // un-redacted original, so a redaction is truly destructive end-to-end:
+      // the secret no longer exists in the vault, exports or sync bundles. If
+      // this delete fails the user keeps both copies (worst case = a leftover
+      // original) rather than losing the new one.
+      try {
+        await deleteImage.mutateAsync(source.id);
+      } catch (delErr) {
+        toast.error(asIpcError(delErr).message || t("annotator.deleteOriginalError"));
+      }
       onOpenChange(false);
     } catch (err) {
       toast.error(asIpcError(err).message || t("annotator.saveError"));
@@ -231,7 +249,7 @@ export function Annotator({
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("annotator.title")}</DialogTitle>
-          <DialogDescription>{t("annotator.redactHint")}</DialogDescription>
+          <DialogDescription>{t("annotator.replaceHint")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-3 rounded-lg border p-2">
@@ -301,9 +319,16 @@ export function Annotator({
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
           </Button>
-          <Button type="button" variant="brand" onClick={() => void handleSave()} disabled={addImage.isPending}>
+          <Button
+            type="button"
+            variant="brand"
+            onClick={() => void handleSave()}
+            disabled={addImage.isPending || deleteImage.isPending}
+          >
             <Save />
-            {addImage.isPending ? t("annotator.saving") : t("annotator.save")}
+            {addImage.isPending || deleteImage.isPending
+              ? t("annotator.saving")
+              : t("annotator.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -18,6 +18,7 @@ import { FindingForm } from "@/components/findings/finding-form";
 import { KbPicker } from "@/components/findings/kb-picker";
 import { ImportFindingsDialog } from "@/components/findings/import-findings-dialog";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useReport, useUpdateReport } from "@/lib/queries/use-reports";
 import {
   useCreateFinding,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/queries/use-findings";
 import { asIpcError } from "@/lib/ipc";
 import { useDebouncedCallback } from "@/lib/use-debounced-callback";
+import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { severityRank } from "@/lib/format";
 import type {
   Finding,
@@ -147,10 +149,13 @@ export function ReportDetail() {
   const createFromKb = useCreateFindingFromKb(id ?? "");
   const importFindingsM = useImportFindings(id ?? "");
 
+  const undoableDelete = useUndoableDelete();
+
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Finding | undefined>(undefined);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Finding | null>(null);
 
   const commit = (patch: ReportPatch) =>
     updateReport.mutate(patch, {
@@ -182,10 +187,18 @@ export function ReportDetail() {
       },
     );
 
-  const handleDelete = (f: Finding) => {
-    if (!window.confirm(t("findings.deleteConfirm"))) return;
-    deleteFinding.mutate(f.id, {
-      onError: (err) => toast.error(asIpcError(err).message),
+  const confirmDelete = () => {
+    const f = pendingDelete;
+    setPendingDelete(null);
+    if (!f) return;
+    undoableDelete({
+      id: f.id,
+      message: t("findings.deleted", { title: f.title }),
+      undoLabel: t("common.undo"),
+      perform: () =>
+        deleteFinding.mutate(f.id, {
+          onError: (err) => toast.error(asIpcError(err).message),
+        }),
     });
   };
 
@@ -320,7 +333,7 @@ export function ReportDetail() {
         <motion.div layout className="space-y-3">
           <AnimatePresence>
             {sortedFindings.map((f) => (
-              <FindingCard key={f.id} finding={f} onEdit={openEdit} onDelete={handleDelete} />
+              <FindingCard key={f.id} finding={f} onEdit={openEdit} onDelete={setPendingDelete} />
             ))}
           </AnimatePresence>
         </motion.div>
@@ -350,6 +363,15 @@ export function ReportDetail() {
         onOpenChange={setImportOpen}
         onImport={handleImport}
         pending={importFindingsM.isPending}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={t("findings.deleteTitle")}
+        description={t("findings.deleteConfirm")}
+        itemName={pendingDelete?.title}
+        onConfirm={confirmDelete}
       />
     </motion.div>
   );

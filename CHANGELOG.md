@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security hardening
+- **Content-Security-Policy** set (was `null`): locks script/connect/img/style sources so a DOM-injection
+  bug in the webview can't pivot to the unlocked-vault IPC surface.
+- **Destructive redaction**: the annotator now deletes the original after saving the redacted image, and
+  deletes wipe the image BLOB (`data = X''`, with `secure_delete=ON`) so the un-redacted original is truly
+  destroyed and never travels in exports or sync bundles.
+- **EXIF/metadata stripped from imported images** (canvas re-encode) so screenshots' GPS/device data don't
+  leak into the vault/exports.
+- **AI SSRF guard**: the provider `base_url` is validated (http/https only; cloud providers require https
+  unless loopback). **Prompt-injection mitigation**: untrusted (possibly imported) field text is fenced and
+  the model is told to treat it as data, never instructions. AI assist now previews (accept/reject) instead
+  of overwriting the field.
+- **Vault passphrases zeroized** (`Zeroizing`) in the PRAGMA key/rekey buffers; unused `argon2` dep removed.
+- **DOCX export** uses a private (0700) auto-removed temp dir (`tempfile`) instead of world-readable `/tmp`,
+  fixing decrypted-evidence leakage and cleanup-on-crash.
+- **Import size cap** (64 MB) to bound memory/CPU on malformed/huge scanner files.
+- Styled `AlertDialog` confirmations replace all native `window.confirm` (with Undo on report/finding delete).
+
 ### Data-integrity fixes (storage + sync)
 - **Real migration framework**: the schema is now applied through an ordered, idempotent
   migration ladder keyed off `PRAGMA user_version` (previously stamped but never read). Fresh

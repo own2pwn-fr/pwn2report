@@ -7,8 +7,9 @@ import { readFile } from "@tauri-apps/plugin-fs";
 import { Button } from "@/components/ui/button";
 import { Annotator } from "@/components/evidence/annotator";
 import { EvidenceThumbnail } from "@/components/evidence/evidence-thumbnail";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { asIpcError } from "@/lib/ipc";
-import { IMAGE_EXTENSIONS, mimeFromPath } from "@/lib/image";
+import { IMAGE_EXTENSIONS, mimeFromPath, stripImageMetadata } from "@/lib/image";
 import {
   useAddEvidenceImage,
   useDeleteEvidenceImage,
@@ -39,6 +40,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
   const reorder = useReorderEvidenceImages(findingId);
 
   const [annotating, setAnnotating] = useState<EvidenceImage | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<EvidenceImage | null>(null);
 
   const list = images ?? [];
 
@@ -52,10 +54,13 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
       if (!selected || typeof selected !== "string") return;
       const bytes = await readFile(selected);
       const name = selected.split(/[\\/]/).pop() ?? "";
+      // Re-encode through a canvas to strip EXIF/GPS/device metadata before it
+      // ever enters the vault.
+      const clean = await stripImageMetadata(bytes, mimeFromPath(selected));
       await addImage.mutateAsync({
         caption: name,
-        mime: mimeFromPath(selected),
-        data: Array.from(bytes),
+        mime: clean.mime,
+        data: clean.bytes,
       });
     } catch (err) {
       toast.error(asIpcError(err).message || t("evidence.addError"));
@@ -69,7 +74,9 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
         toast.message(t("evidence.pasteEmpty"));
         return;
       }
-      await addImage.mutateAsync({ caption: "", mime: img.mime, data: img.data });
+      // Clipboard images can also carry metadata — strip it on the way in.
+      const clean = await stripImageMetadata(img.data, img.mime);
+      await addImage.mutateAsync({ caption: "", mime: clean.mime, data: clean.bytes });
     } catch (err) {
       toast.error(asIpcError(err).message || t("evidence.pasteError"));
     }
@@ -85,8 +92,10 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
     });
   };
 
-  const handleDelete = (image: EvidenceImage) => {
-    if (!window.confirm(t("evidence.deleteConfirm"))) return;
+  const confirmDelete = () => {
+    const image = pendingDelete;
+    setPendingDelete(null);
+    if (!image) return;
     deleteImage.mutate(image.id, {
       onError: (err) => toast.error(asIpcError(err).message || t("evidence.deleteError")),
     });
@@ -131,7 +140,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
               isLast={index === list.length - 1}
               onMoveUp={() => move(index, -1)}
               onMoveDown={() => move(index, 1)}
-              onDelete={() => handleDelete(image)}
+              onDelete={() => setPendingDelete(image)}
               onAnnotate={() => setAnnotating(image)}
             />
           ))}
@@ -145,6 +154,15 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
           source={annotating}
         />
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={t("evidence.deleteTitle")}
+        description={t("evidence.deleteConfirm")}
+        itemName={pendingDelete?.caption || undefined}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

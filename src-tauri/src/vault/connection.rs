@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use rusqlite::Connection;
+use zeroize::Zeroizing;
 
 use super::schema::SCHEMA_VERSION;
 use super::{schema, CANARY_KEY, CANARY_VALUE};
@@ -15,8 +16,11 @@ use crate::error::{AppError, AppResult};
 
 /// Escape a passphrase for inline use inside `PRAGMA key = '...'` by doubling
 /// embedded single quotes. (rusqlite cannot bind parameters to PRAGMAs.)
-fn escape_passphrase(p: &str) -> String {
-    p.replace('\'', "''")
+///
+/// The escaped copy is wrapped in [`Zeroizing`] so it is wiped from memory on
+/// drop rather than lingering in a freed allocation.
+fn escape_passphrase(p: &str) -> Zeroizing<String> {
+    Zeroizing::new(p.replace('\'', "''"))
 }
 
 /// Apply the SQLCipher key + standard hardening pragmas to a freshly opened
@@ -28,8 +32,10 @@ fn escape_passphrase(p: &str) -> String {
 /// once the connection is keyed.
 fn key_connection(conn: &Connection, passphrase: &str) -> AppResult<()> {
     let escaped = escape_passphrase(passphrase);
-    // MUST be the first statement executed on this connection.
-    conn.execute_batch(&format!("PRAGMA key = '{escaped}';"))?;
+    // MUST be the first statement executed on this connection. The full PRAGMA
+    // string embeds the secret, so it too is wrapped in Zeroizing to be wiped.
+    let pragma = Zeroizing::new(format!("PRAGMA key = '{}';", escaped.as_str()));
+    conn.execute_batch(&pragma)?;
     // Hardening, applied after the key. NOTE: we deliberately stay in the default
     // rollback-journal (DELETE) mode — SQLCipher's `PRAGMA rekey` (used by
     // change_passphrase) does NOT work reliably under WAL, so enabling WAL would

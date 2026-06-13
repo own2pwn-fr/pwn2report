@@ -35,6 +35,7 @@ pub fn complete(
     system: Option<&str>,
     prompt: &str,
 ) -> AppResult<String> {
+    validate_base_url(cfg)?;
     match cfg.provider {
         AiProvider::Ollama => complete_ollama(cfg, system, prompt),
         AiProvider::Openai => complete_openai(cfg, api_key, system, prompt),
@@ -54,6 +55,76 @@ fn agent() -> ureq::Agent {
 /// Trim a trailing slash so we can join paths without doubling it.
 fn base(cfg: &AiConfig) -> &str {
     cfg.base_url.trim_end_matches('/')
+}
+
+/// Whether `host` is a loopback / localhost name, where plain `http` is
+/// acceptable even for cloud-style providers (local OpenAI-compatible servers,
+/// reverse proxies, dev setups). Strips an optional `:port` and IPv6 brackets.
+fn is_loopback_host(host: &str) -> bool {
+    // Drop a port suffix. For bracketed IPv6 (`[::1]:443`) split on the `]`.
+    let host = if let Some(rest) = host.strip_prefix('[') {
+        // `[::1]` or `[::1]:port` -> `::1`
+        rest.split(']').next().unwrap_or(rest)
+    } else {
+        // `host` or `host:port` -> `host`
+        host.split(':').next().unwrap_or(host)
+    };
+    let host = host.to_ascii_lowercase();
+    host == "localhost" || host == "127.0.0.1" || host == "::1" || host.starts_with("127.")
+}
+
+/// Validate `cfg.base_url` before issuing any request (SSRF / scheme guard).
+///
+/// Rules:
+/// - The URL MUST have a `http://` or `https://` scheme and a non-empty host —
+///   any other scheme (`file:`, `ftp:`, `gopher:`, `data:`, …) is rejected.
+/// - Cloud providers (OpenAI / Anthropic) MUST use `https`, UNLESS the host is
+///   loopback/localhost (so local OpenAI-compatible servers over http work).
+/// - Ollama (local by design) may use plain `http` to any host.
+fn validate_base_url(cfg: &AiConfig) -> AppResult<()> {
+    let raw = cfg.base_url.trim();
+
+    // Split scheme from the rest. We don't pull in the `url` crate (not a direct
+    // dependency); a minimal scheme+host parse is enough for this guard.
+    let (scheme, rest) = match raw.split_once("://") {
+        Some((s, r)) => (s.to_ascii_lowercase(), r),
+        None => {
+            return Err(AppError::Ai(format!(
+                "AI base URL '{raw}' is not a valid http(s) URL"
+            )))
+        }
+    };
+
+    let is_https = match scheme.as_str() {
+        "https" => true,
+        "http" => false,
+        other => {
+            return Err(AppError::Ai(format!(
+                "AI base URL scheme '{other}' is not allowed — only http and https are supported"
+            )))
+        }
+    };
+
+    // Authority is everything up to the first `/`, `?` or `#`.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    // Strip any `user:pass@` credentials prefix before the host.
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    if host.is_empty() {
+        return Err(AppError::Ai(format!("AI base URL '{raw}' has no host")));
+    }
+
+    // Cloud providers must use TLS unless talking to a local server.
+    if !is_https
+        && matches!(cfg.provider, AiProvider::Openai | AiProvider::Anthropic)
+        && !is_loopback_host(host)
+    {
+        return Err(AppError::Ai(format!(
+            "cloud AI providers require an https:// base URL (got '{raw}'); \
+                 plain http is only allowed for localhost"
+        )));
+    }
+
+    Ok(())
 }
 
 /// Map a `ureq` error into a clear, provider-tagged [`AppError::Ai`]. A
@@ -209,6 +280,59 @@ mod tests {
         let err = require_key("Anthropic", Some("")).unwrap_err();
         assert!(matches!(err, AppError::Ai(_)));
         assert_eq!(require_key("OpenAI", Some("sk-x")).unwrap(), "sk-x");
+    }
+
+    fn cfg_with(provider: AiProvider, base_url: &str) -> AiConfig {
+        AiConfig {
+            provider,
+            base_url: base_url.to_string(),
+            ..AiConfig::default()
+        }
+    }
+
+    #[test]
+    fn validate_rejects_non_http_schemes() {
+        for url in [
+            "file:///etc/passwd",
+            "ftp://host/x",
+            "gopher://h",
+            "data:text/plain,hi",
+        ] {
+            let err = validate_base_url(&cfg_with(AiProvider::Ollama, url)).unwrap_err();
+            assert!(matches!(err, AppError::Ai(_)), "{url} should be rejected");
+        }
+    }
+
+    #[test]
+    fn validate_rejects_garbage_and_missing_host() {
+        assert!(validate_base_url(&cfg_with(AiProvider::Ollama, "not-a-url")).is_err());
+        assert!(validate_base_url(&cfg_with(AiProvider::Openai, "https://")).is_err());
+    }
+
+    #[test]
+    fn validate_cloud_requires_https_except_localhost() {
+        // Cloud over plain http to a remote host: rejected.
+        assert!(validate_base_url(&cfg_with(AiProvider::Openai, "http://api.openai.com")).is_err());
+        assert!(
+            validate_base_url(&cfg_with(AiProvider::Anthropic, "http://api.anthropic.com"))
+                .is_err()
+        );
+        // Cloud over https: allowed.
+        assert!(validate_base_url(&cfg_with(AiProvider::Openai, "https://api.openai.com")).is_ok());
+        // Cloud over http to localhost / loopback: allowed (local OpenAI server).
+        assert!(validate_base_url(&cfg_with(AiProvider::Openai, "http://localhost:8080")).is_ok());
+        assert!(
+            validate_base_url(&cfg_with(AiProvider::Openai, "http://127.0.0.1:1234/v1")).is_ok()
+        );
+        assert!(validate_base_url(&cfg_with(AiProvider::Openai, "http://[::1]:1234")).is_ok());
+    }
+
+    #[test]
+    fn validate_ollama_allows_http_anywhere() {
+        assert!(validate_base_url(&cfg_with(AiProvider::Ollama, "http://localhost:11434")).is_ok());
+        assert!(
+            validate_base_url(&cfg_with(AiProvider::Ollama, "http://192.168.1.5:11434")).is_ok()
+        );
     }
 
     #[test]

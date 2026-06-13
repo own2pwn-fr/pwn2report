@@ -14,6 +14,7 @@
     "close": "Fermer",
     "back": "Retour",
     "confirm": "Confirmer",
+    "undo": "Annuler",
     "loading": "Chargement…",
     "optional": "facultatif",
     "none": "Aucun",
@@ -69,7 +70,9 @@
     "findingCount_other": "{{count}} vulnérabilités",
     "updated": "Mis à jour {{date}}",
     "open": "Ouvrir le rapport",
+    "deleteTitle": "Supprimer le rapport ?",
     "deleteConfirm": "Supprimer ce rapport et toutes ses vulnérabilités ? Cette action est irréversible.",
+    "deleted": "« {{title}} » supprimé.",
     "empty": {
       "title": "Aucun rapport pour l'instant",
       "body": "Créez votre premier rapport pour commencer à documenter vos vulnérabilités.",
@@ -134,7 +137,9 @@
       "body": "Ajoutez votre première vulnérabilité à ce rapport.",
       "cta": "Ajouter une vulnérabilité"
     },
+    "deleteTitle": "Supprimer la vulnérabilité ?",
     "deleteConfirm": "Supprimer cette vulnérabilité ? Cette action est irréversible.",
+    "deleted": "« {{title}} » supprimée.",
     "createError": "Impossible de créer la vulnérabilité.",
     "addRow": "Ajouter",
     "discard": {
@@ -218,6 +223,7 @@
     "captionPlaceholder": "Décrivez ce que montre cette capture d'écran…",
     "captionSaved": "Légende mise à jour.",
     "captionError": "Impossible de mettre à jour la légende.",
+    "deleteTitle": "Supprimer l'image ?",
     "deleteConfirm": "Supprimer cette image ? Cette action est irréversible.",
     "deleteError": "Impossible de supprimer l'image.",
     "moveUp": "Déplacer vers le haut",
@@ -241,10 +247,12 @@
     "color": "Couleur",
     "undo": "Annuler",
     "clear": "Effacer",
-    "save": "Enregistrer comme nouvelle image",
+    "save": "Enregistrer et remplacer l'original",
     "saving": "Enregistrement…",
     "saveError": "Impossible d'enregistrer l'image annotée.",
-    "redactHint": "Le masquage est définitivement intégré aux pixels enregistrés."
+    "deleteOriginalError": "Image masquée enregistrée, mais impossible de supprimer l'original. Supprimez-le manuellement pour que la version non masquée ne subsiste pas.",
+    "redactHint": "Le masquage est définitivement intégré aux pixels enregistrés.",
+    "replaceHint": "L'enregistrement remplace l'original par la version masquée. Les masquages sont définitivement intégrés aux pixels et l'original non masqué est supprimé."
   },
   "kb": {
     "title": "Base de connaissances",
@@ -260,6 +268,7 @@
     "importSuccess_other": "{{count}} entrées importées.",
     "importError": "Impossible d'importer le catalogue intégré.",
     "createError": "Impossible de créer l'entrée.",
+    "deleteTitle": "Supprimer l'entrée ?",
     "deleteConfirm": "Supprimer cette entrée de la base de connaissances ? Cette action est irréversible.",
     "empty": {
       "title": "Votre base de connaissances est vide",
@@ -406,6 +415,7 @@
       "default": "Par défaut",
       "empty": "Aucun modèle disponible.",
       "resetCta": "Réinitialiser par défaut",
+      "resetTitle": "Réinitialiser le modèle ?",
       "resetConfirm": "Réinitialiser ce modèle à sa valeur intégrée par défaut ? Vos modifications seront perdues.",
       "saveSuccess": "Modèle enregistré.",
       "saveError": "Impossible d'enregistrer le modèle.",
@@ -419,6 +429,12 @@
     "error": "L'assistance IA a échoué.",
     "empty": "Saisissez d'abord un peu de texte pour que l'IA puisse l'améliorer.",
     "done": "Texte mis à jour par l'IA.",
+    "preview": {
+      "title": "Suggestion de l'IA",
+      "hint": "Vérifiez le résultat avant qu'il ne remplace votre texte.",
+      "accept": "Accepter",
+      "reject": "Rejeter"
+    },
     "tasks": {
       "improve": "Améliorer la rédaction",
       "generate": "Générer un brouillon",

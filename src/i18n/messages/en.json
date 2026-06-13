@@ -14,6 +14,7 @@
     "close": "Close",
     "back": "Back",
     "confirm": "Confirm",
+    "undo": "Undo",
     "loading": "Loading…",
     "optional": "optional",
     "none": "None",
@@ -69,7 +70,9 @@
     "findingCount_other": "{{count}} findings",
     "updated": "Updated {{date}}",
     "open": "Open report",
+    "deleteTitle": "Delete report?",
     "deleteConfirm": "Delete this report and all its findings? This cannot be undone.",
+    "deleted": "Deleted “{{title}}”.",
     "empty": {
       "title": "No reports yet",
       "body": "Create your first report to start documenting findings.",
@@ -134,7 +137,9 @@
       "body": "Add your first finding to this report.",
       "cta": "Add a finding"
     },
+    "deleteTitle": "Delete finding?",
     "deleteConfirm": "Delete this finding? This cannot be undone.",
+    "deleted": "Deleted “{{title}}”.",
     "createError": "Could not create the finding.",
     "addRow": "Add",
     "discard": {
@@ -218,6 +223,7 @@
     "captionPlaceholder": "Describe what this screenshot shows…",
     "captionSaved": "Caption updated.",
     "captionError": "Could not update the caption.",
+    "deleteTitle": "Delete image?",
     "deleteConfirm": "Delete this image? This cannot be undone.",
     "deleteError": "Could not delete the image.",
     "moveUp": "Move up",
@@ -241,10 +247,12 @@
     "color": "Color",
     "undo": "Undo",
     "clear": "Clear",
-    "save": "Save as new image",
+    "save": "Save & replace original",
     "saving": "Saving…",
     "saveError": "Could not save the annotated image.",
-    "redactHint": "Redaction is permanently baked into the saved pixels."
+    "deleteOriginalError": "Saved the redacted image, but could not delete the original. Delete it manually so the un-redacted version does not remain.",
+    "redactHint": "Redaction is permanently baked into the saved pixels.",
+    "replaceHint": "Saving replaces the original with the redacted version. Redactions are permanently baked into the pixels and the un-redacted original is deleted."
   },
   "kb": {
     "title": "Knowledge base",
@@ -260,6 +268,7 @@
     "importSuccess_other": "Imported {{count}} entries.",
     "importError": "Could not import the bundled catalog.",
     "createError": "Could not create the entry.",
+    "deleteTitle": "Delete entry?",
     "deleteConfirm": "Delete this knowledge base entry? This cannot be undone.",
     "empty": {
       "title": "Your knowledge base is empty",
@@ -406,6 +415,7 @@
       "default": "Default",
       "empty": "No templates available.",
       "resetCta": "Reset to default",
+      "resetTitle": "Reset template?",
       "resetConfirm": "Reset this template to its built-in default? Your changes will be lost.",
       "saveSuccess": "Template saved.",
       "saveError": "Could not save the template.",
@@ -419,6 +429,12 @@
     "error": "AI assistance failed.",
     "empty": "Type some text first so the AI has something to improve.",
     "done": "Text updated by AI.",
+    "preview": {
+      "title": "AI suggestion",
+      "hint": "Review the result before it replaces your text.",
+      "accept": "Accept",
+      "reject": "Discard"
+    },
     "tasks": {
       "improve": "Improve writing",
       "generate": "Generate a draft",

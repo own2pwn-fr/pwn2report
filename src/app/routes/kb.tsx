@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { SeverityBadge } from "@/components/severity-badge";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { KbForm } from "@/components/kb/kb-form";
 import {
   useCreateKbEntry,
@@ -44,6 +45,7 @@ export function KnowledgeBase() {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<KbEntry | undefined>(undefined);
+  const [pendingDelete, setPendingDelete] = useState<KbEntry | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -88,10 +90,16 @@ export function KnowledgeBase() {
       },
     );
 
-  const handleDelete = (e: KbEntry, ev: React.MouseEvent) => {
+  const requestDelete = (e: KbEntry, ev: React.MouseEvent) => {
     ev.stopPropagation();
-    if (!window.confirm(t("kb.deleteConfirm"))) return;
-    deleteEntry.mutate(e.id, {
+    setPendingDelete(e);
+  };
+
+  const confirmDelete = () => {
+    const entry = pendingDelete;
+    setPendingDelete(null);
+    if (!entry) return;
+    deleteEntry.mutate(entry.id, {
       onError: (err) => toast.error(asIpcError(err).message),
     });
   };
@@ -217,7 +225,7 @@ export function KnowledgeBase() {
                           size="icon"
                           title={t("common.delete")}
                           aria-label={t("common.delete")}
-                          onClick={(ev) => handleDelete(e, ev)}
+                          onClick={(ev) => requestDelete(e, ev)}
                         >
                           <Trash2 />
                         </Button>
@@ -255,6 +263,15 @@ export function KnowledgeBase() {
         onCreate={handleCreate}
         onUpdate={handleUpdate}
         pending={createEntry.isPending || updateEntry.isPending}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={t("kb.deleteTitle")}
+        description={t("kb.deleteConfirm")}
+        itemName={pendingDelete?.title}
+        onConfirm={confirmDelete}
       />
     </div>
   );

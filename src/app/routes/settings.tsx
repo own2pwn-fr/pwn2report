@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { asIpcError, backupVault, changePassphrase } from "@/lib/ipc";
@@ -676,6 +677,7 @@ function TemplatesSection() {
   const [selected, setSelected] = useState<ReportType | undefined>(undefined);
   const { data: source } = useTemplate(selected);
   const [draft, setDraft] = useState("");
+  const [confirmReset, setConfirmReset] = useState(false);
   const saveTemplate = useSaveTemplate();
   const resetTemplate = useResetTemplate();
 
@@ -706,7 +708,12 @@ function TemplatesSection() {
 
   const handleReset = () => {
     if (!selected) return;
-    if (!window.confirm(t("settings.templates.resetConfirm"))) return;
+    setConfirmReset(true);
+  };
+
+  const confirmResetTemplate = () => {
+    setConfirmReset(false);
+    if (!selected) return;
     resetTemplate.mutate(selected, {
       onSuccess: () => toast.success(t("settings.templates.resetSuccess")),
       onError: (err) => toast.error(asIpcError(err).message || t("settings.templates.resetError")),
@@ -787,6 +794,16 @@ function TemplatesSection() {
           </>
         )}
       </CardContent>
+
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title={t("settings.templates.resetTitle")}
+        description={t("settings.templates.resetConfirm")}
+        itemName={selected ? t(`reportType.${selected}`) : undefined}
+        confirmLabel={t("settings.templates.resetCta")}
+        onConfirm={confirmResetTemplate}
+      />
     </Card>
   );
 }

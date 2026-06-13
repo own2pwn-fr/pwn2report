@@ -24,15 +24,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
 import { useCreateReport, useDeleteReport, useReports } from "@/lib/queries/use-reports";
 import { useLockVault } from "@/lib/queries/use-vault";
+import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { asIpcError } from "@/lib/ipc";
 import { formatDate } from "@/lib/format";
-import type { ReportType } from "@/lib/types";
+import type { ReportSummary, ReportType } from "@/lib/types";
 
 const REPORT_TYPES: ReportType[] = ["web_pentest", "code_audit", "red_team"];
 
@@ -145,12 +147,27 @@ export function ReportsList() {
   const { data: reports, isLoading } = useReports();
   const deleteReport = useDeleteReport();
   const lockVault = useLockVault();
+  const undoableDelete = useUndoableDelete();
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const [pendingDelete, setPendingDelete] = useState<ReportSummary | null>(null);
+
+  const requestDelete = (report: ReportSummary, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm(t("reports.deleteConfirm"))) return;
-    deleteReport.mutate(id, {
-      onError: (err) => toast.error(asIpcError(err).message),
+    setPendingDelete(report);
+  };
+
+  const confirmDelete = () => {
+    const report = pendingDelete;
+    setPendingDelete(null);
+    if (!report) return;
+    undoableDelete({
+      id: report.id,
+      message: t("reports.deleted", { title: report.title }),
+      undoLabel: t("common.undo"),
+      perform: () =>
+        deleteReport.mutate(report.id, {
+          onError: (err) => toast.error(asIpcError(err).message),
+        }),
     });
   };
 
@@ -253,7 +270,7 @@ export function ReportsList() {
                         className="opacity-0 transition-opacity group-hover:opacity-100"
                         title={t("common.delete")}
                         aria-label={t("common.delete")}
-                        onClick={(e) => handleDelete(r.id, e)}
+                        onClick={(e) => requestDelete(r, e)}
                       >
                         <Trash2 />
                       </Button>
@@ -275,6 +292,15 @@ export function ReportsList() {
           </AnimatePresence>
         </motion.div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={t("reports.deleteTitle")}
+        description={t("reports.deleteConfirm")}
+        itemName={pendingDelete?.title}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

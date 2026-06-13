@@ -27,7 +27,6 @@ keyring = "3"
 uuid = { version = "1.23.3", features = ["v4", "serde"] }
 chrono = { version = "0.4.45", features = ["serde"] }
 thiserror = "2.0.18"
-argon2 = "0.5.3"
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 typst-as-lib = { version = "0.15.5", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
@@ -39,4 +38,6 @@ roxmltree = "0.21.1"
 base64 = "0.22.1"
 ureq = { version = "2", features = ["json"] }
 age = "0.11.3"
+tempfile = "3.27.0"
+zeroize = "1.9.0"
 

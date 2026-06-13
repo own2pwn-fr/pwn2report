@@ -140,10 +140,18 @@ pub fn insert_raw(conn: &Connection, meta: &EvidenceImage, data: &[u8]) -> AppRe
 /// only mutation a merge ever applies is this tombstone. No-op if the row is
 /// already at this state.
 pub fn set_deleted(conn: &Connection, id: &str, deleted_at: Option<&str>) -> AppResult<()> {
-    conn.execute(
-        "UPDATE evidence_images SET deleted_at = ?1 WHERE id = ?2",
-        params![deleted_at, id],
-    )?;
+    if deleted_at.is_some() {
+        // Applying a tombstone from a peer: drop the bytes too (see `delete`).
+        conn.execute(
+            "UPDATE evidence_images SET deleted_at = ?1, data = X'' WHERE id = ?2",
+            params![deleted_at, id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE evidence_images SET deleted_at = ?1 WHERE id = ?2",
+            params![deleted_at, id],
+        )?;
+    }
     Ok(())
 }
 
@@ -223,8 +231,11 @@ pub fn update_caption(conn: &Connection, id: &str, caption: &str) -> AppResult<E
 /// `created_at` is fixed, so the tombstone itself is the LWW signal — see merge.)
 pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
     let now = now_rfc3339();
+    // Tombstone the row AND wipe the bytes: with `secure_delete=ON` the freed
+    // pages are overwritten, so the original (e.g. an un-redacted screenshot) is
+    // truly destroyed — not merely hidden — and never travels in a sync bundle.
     let n = conn.execute(
-        "UPDATE evidence_images SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        "UPDATE evidence_images SET deleted_at = ?1, data = X'' WHERE id = ?2 AND deleted_at IS NULL",
         params![now, id],
     )?;
     if n == 0 {
