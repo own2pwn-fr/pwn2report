@@ -55,7 +55,13 @@ mappings, CSV/SARIF export, Azure/Gemini AI providers, and a hardened security &
 
 ## Install
 
-Grab an installer for your OS from the [Releases](https://github.com/own2pwn-fr/pwn2report/releases)
+**Linux / macOS — one-liner** (downloads the latest release for your OS/arch):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/own2pwn-fr/pwn2report/main/install.sh | sh
+```
+
+Or grab an installer for your OS from the [Releases](https://github.com/own2pwn-fr/pwn2report/releases)
 page (`.deb`/`.rpm`/AppImage on Linux, `.msi` on Windows, `.dmg` on macOS).
 
 - **DOCX export** needs [`pandoc`](https://pandoc.org/installing.html) — release builds bundle it;
