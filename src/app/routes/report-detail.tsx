@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -11,7 +11,9 @@ import {
   Plus,
   Server,
   SlidersHorizontal,
+  Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -23,9 +25,17 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ReportLanguageSelect } from "@/components/report-language-select";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
+import { StackSkeleton } from "@/components/ui/skeleton";
 import { FindingCard } from "@/components/findings/finding-card";
 import { FindingForm } from "@/components/findings/finding-form";
 import { KbPicker } from "@/components/findings/kb-picker";
@@ -45,6 +55,7 @@ import {
   useDeleteFinding,
   useFindings,
   useImportFindings,
+  useReorderFindings,
   useUpdateFinding,
 } from "@/lib/queries/use-findings";
 import { useAssets } from "@/lib/queries/use-assets";
@@ -53,6 +64,7 @@ import { useSetFindingAssets } from "@/lib/queries/use-finding-assets";
 import { errorMessage } from "@/lib/ipc";
 import { useDebouncedCallback } from "@/lib/use-debounced-callback";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
+import { useHotkey } from "@/lib/use-hotkeys";
 import { severityRank } from "@/lib/format";
 import type {
   Finding,
@@ -60,7 +72,16 @@ import type {
   ImportFormat,
   NewFinding,
   ReportPatch,
+  TriageStatus,
 } from "@/lib/types";
+
+type OrderMode = "severity" | "manual";
+const TRIAGE_STATUSES: TriageStatus[] = [
+  "open",
+  "acknowledged",
+  "false_positive",
+  "resolved",
+];
 
 /** Subtle "Saving…/Saved ✓" status, shown only after the user has edited. */
 function SaveStatus({ status }: { status: "idle" | "saving" | "saved" }) {
@@ -173,6 +194,7 @@ export function ReportDetail() {
   const cloneFinding = useCloneFinding(id ?? "");
   const createFromKb = useCreateFindingFromKb(id ?? "");
   const importFindingsM = useImportFindings(id ?? "");
+  const reorderFindings = useReorderFindings(id ?? "");
   const setFindingAssets = useSetFindingAssets();
 
   const undoableDelete = useUndoableDelete();
@@ -183,6 +205,28 @@ export function ReportDetail() {
   const [importOpen, setImportOpen] = useState(false);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [pendingDelete, setPendingDelete] = useState<Finding | null>(null);
+
+  // Findings ordering + bulk selection.
+  const [orderMode, setOrderMode] = useState<OrderMode>("severity");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+
+  // `n` adds a finding from anywhere on the page.
+  useHotkey("n", () => {
+    setEditing(undefined);
+    setFormOpen(true);
+  });
+
+  // Drop selection entries for findings that no longer exist (after delete/sync).
+  useEffect(() => {
+    if (!findings) return;
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(findings.map((f) => f.id));
+      const next = new Set([...prev].filter((idv) => live.has(idv)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [findings]);
 
   const commit = (patch: ReportPatch) =>
     updateReport.mutate(patch, {
@@ -278,13 +322,102 @@ export function ReportDetail() {
       },
     );
 
+  // Ordered findings for display. "severity" sorts by severity then stored order;
+  // "manual" honours the persisted sort_order so drag/up-down ordering sticks.
+  const displayFindings = useMemo(() => {
+    const list = [...(findings ?? [])];
+    if (orderMode === "manual") {
+      return list.sort((a, b) => a.sort_order - b.sort_order);
+    }
+    return list.sort(
+      (a, b) =>
+        severityRank(a.severity) - severityRank(b.severity) || a.sort_order - b.sort_order,
+    );
+  }, [findings, orderMode]);
+
+  const toggleSelect = (f: Finding) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(f.id)) next.delete(f.id);
+      else next.add(f.id);
+      return next;
+    });
+
+  const clearSelection = () => setSelected(new Set());
+
+  const selectAll = () => setSelected(new Set(displayFindings.map((f) => f.id)));
+
+  // Persist a manual move by swapping with the neighbour and reordering.
+  const move = (f: Finding, dir: -1 | 1) => {
+    const ids = displayFindings.map((x) => x.id);
+    const idx = ids.indexOf(f.id);
+    const target = idx + dir;
+    if (target < 0 || target >= ids.length) return;
+    [ids[idx], ids[target]] = [ids[target], ids[idx]];
+    // Manual ordering only makes sense when displayed in manual order.
+    setOrderMode("manual");
+    reorderFindings.mutate(ids, {
+      onError: (err) => toast.error(errorMessage(err, "findings.reorderError")),
+    });
+  };
+
+  const handleBulkDelete = () => {
+    const ids = [...selected];
+    setPendingBulkDelete(false);
+    if (ids.length === 0) return;
+    clearSelection();
+    undoableDelete({
+      id: `bulk:${ids.join(",")}`,
+      message: t("findings.select.bulkDeleted", { count: ids.length }),
+      undoLabel: t("common.undo"),
+      perform: () => {
+        for (const fid of ids) {
+          deleteFinding.mutate(fid, {
+            onError: (err) => toast.error(errorMessage(err)),
+          });
+        }
+      },
+    });
+  };
+
+  const handleBulkTriage = (status: TriageStatus) => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    clearSelection();
+    let failed = false;
+    for (const fid of ids) {
+      updateFinding.mutate(
+        { id: fid, patch: { triage_status: status } },
+        {
+          onError: () => {
+            if (!failed) {
+              failed = true;
+              toast.error(t("findings.select.bulkError"));
+            }
+          },
+        },
+      );
+    }
+    toast.success(t("findings.select.bulkTriageDone", { count: ids.length }));
+  };
+
+  // History-aware back: pop the history stack when there is one, else go home.
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/");
+  };
+
   if (isLoading) {
-    return <p className="px-6 py-10 text-sm text-muted-foreground">{t("common.loading")}</p>;
+    return (
+      <div className="mx-auto max-w-4xl px-6 py-8">
+        <StackSkeleton count={5} />
+      </div>
+    );
   }
   if (isError || !report) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <Button variant="ghost" onClick={() => navigate("/")}>
+        <Button variant="ghost" onClick={goBack}>
           <ArrowLeft />
           {t("common.back")}
         </Button>
@@ -293,19 +426,28 @@ export function ReportDetail() {
     );
   }
 
-  const sortedFindings = [...(findings ?? [])].sort(
-    (a, b) => severityRank(a.severity) - severityRank(b.severity) || a.sort_order - b.sort_order,
-  );
-
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2 }}
-      className="mx-auto max-w-4xl px-6 py-8"
-    >
+    <div className="mx-auto max-w-4xl px-6 py-8">
+      <nav aria-label={t("nav.breadcrumb")} className="mb-4">
+        <ol className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+          <li>
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="rounded hover:text-foreground hover:underline"
+            >
+              {t("reports.title")}
+            </button>
+          </li>
+          <li aria-hidden>/</li>
+          <li className="truncate font-medium text-foreground" aria-current="page">
+            {t("report.breadcrumb", { client: report.client, title: report.title })}
+          </li>
+        </ol>
+      </nav>
+
       <div className="mb-6 flex items-center justify-between gap-4">
-        <Button variant="ghost" onClick={() => navigate("/")}>
+        <Button variant="ghost" onClick={goBack}>
           <ArrowLeft />
           {t("common.back")}
         </Button>
@@ -424,6 +566,17 @@ export function ReportDetail() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold tracking-tight">{t("findings.title")}</h2>
         <div className="flex flex-wrap items-center gap-2">
+          {displayFindings.length > 1 && (
+            <Select value={orderMode} onValueChange={(v) => setOrderMode(v as OrderMode)}>
+              <SelectTrigger className="w-44" aria-label={t("findings.order.label")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="severity">{t("findings.order.severity")}</SelectItem>
+                <SelectItem value="manual">{t("findings.order.manual")}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Button variant="outline" onClick={() => setKbPickerOpen(true)}>
             <BookMarked />
             {t("findings.addFromKb")}
@@ -438,7 +591,7 @@ export function ReportDetail() {
             <FileUp />
             {t("findings.importCta")}
           </Button>
-          {sortedFindings.length > 0 && (
+          {displayFindings.length > 0 && (
             <Button variant="brand" onClick={openCreate}>
               <Plus />
               {t("findings.new")}
@@ -447,7 +600,62 @@ export function ReportDetail() {
         </div>
       </div>
 
-      {sortedFindings.length === 0 ? (
+      {orderMode === "manual" && displayFindings.length > 1 && (
+        <p className="mb-3 text-xs text-muted-foreground">{t("findings.order.manualHint")}</p>
+      )}
+
+      {/* Bulk-selection toolbar — appears once one or more findings are picked. */}
+      <AnimatePresence>
+        {selected.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mb-3 overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2">
+              <span className="px-1 text-sm font-medium">
+                {t("findings.select.count", { count: selected.size })}
+              </span>
+              <Select onValueChange={(v) => handleBulkTriage(v as TriageStatus)}>
+                <SelectTrigger className="h-8 w-44" aria-label={t("findings.select.setTriage")}>
+                  <SelectValue placeholder={t("findings.select.setTriage")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRIAGE_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {t(`triage.${s}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setPendingBulkDelete(true)}
+              >
+                <Trash2 />
+                {t("findings.select.bulkDelete")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={selectAll}>
+                {t("findings.select.selectAll")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                aria-label={t("findings.select.clear")}
+              >
+                <X />
+                {t("findings.select.clear")}
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {displayFindings.length === 0 ? (
         <EmptyState
           icon={Bug}
           title={t("findings.empty.title")}
@@ -458,13 +666,21 @@ export function ReportDetail() {
       ) : (
         <motion.div layout className="space-y-3">
           <AnimatePresence>
-            {sortedFindings.map((f) => (
+            {displayFindings.map((f, i) => (
               <FindingCard
                 key={f.id}
                 finding={f}
                 onEdit={openEdit}
                 onDuplicate={handleDuplicate}
                 onDelete={setPendingDelete}
+                selectable
+                selected={selected.has(f.id)}
+                onToggleSelect={toggleSelect}
+                reorderable={orderMode === "manual"}
+                onMoveUp={(x) => move(x, -1)}
+                onMoveDown={(x) => move(x, 1)}
+                canMoveUp={i > 0}
+                canMoveDown={i < displayFindings.length - 1}
               />
             ))}
           </AnimatePresence>
@@ -509,6 +725,14 @@ export function ReportDetail() {
         itemName={pendingDelete?.title}
         onConfirm={confirmDelete}
       />
-    </motion.div>
+
+      <ConfirmDialog
+        open={pendingBulkDelete}
+        onOpenChange={setPendingBulkDelete}
+        title={t("findings.select.bulkDeleteTitle")}
+        description={t("findings.select.bulkDeleteConfirm", { count: selected.size })}
+        onConfirm={handleBulkDelete}
+      />
+    </div>
   );
 }

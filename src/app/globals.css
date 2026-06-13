@@ -94,6 +94,10 @@
   /* Brand accent — violet (hue 255), matches own2pwn landing. Raw HSL
      components so callers can apply alpha via hsl(var(--accent-brand) / .18). */
   --accent-brand: 255 92% 66%;
+  /* Solid brand for filled CTAs / selected chips. Darker (L≈48%) so white text
+     clears WCAG AA (≥4.5:1) — the lighter --accent-brand is reserved for tints,
+     borders, icons and text-on-surface, never as a white-text background. */
+  --accent-brand-solid: 255 70% 48%;
   --ring: hsl(var(--accent-brand));
   --radius: 0.625rem;
 
@@ -125,6 +129,9 @@
   --input: hsl(0, 0%, 19%);
   /* violet-400 #a78bfa */
   --accent-brand: 255 92% 76%;
+  /* Solid brand for filled CTAs on dark — kept dark enough that white text
+     clears WCAG AA, while reading as the brand violet. */
+  --accent-brand-solid: 255 70% 52%;
   --ring: hsl(var(--accent-brand));
 
   /* Severity scale (dark) */
@@ -202,6 +209,7 @@
 
 .text-accent-brand { color: hsl(var(--accent-brand)); }
 .bg-accent-brand { background-color: hsl(var(--accent-brand)); }
+.bg-accent-brand-solid { background-color: hsl(var(--accent-brand-solid)); }
 
 /* Severity color helpers consumed by SeverityBadge */
 .sev-critical { color: hsl(var(--sev-critical)); background: hsl(var(--sev-critical) / 0.14); border-color: hsl(var(--sev-critical) / 0.4); }

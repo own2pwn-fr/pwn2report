@@ -28,6 +28,7 @@ import { MappingsEditor } from "@/components/findings/mappings-editor";
 import { KeyValueEditor } from "@/components/ui/key-value-editor";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
 import { cn } from "@/lib/utils";
+import { useSubmitShortcut } from "@/lib/use-hotkeys";
 import { useFindingAssets } from "@/lib/queries/use-finding-assets";
 import {
   emptyState,
@@ -375,14 +376,22 @@ export function FindingForm({
     if (!open && submittedRef.current) submittedRef.current = false;
   }, [open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (blocked) return;
+  const submit = () => {
+    if (blocked || pending) return;
     submittedRef.current = true;
     clearDraft(key);
     if (finding) onUpdate(finding.id, toPatch(state), assetIds);
     else onCreate(toNewFinding(state), assetIds);
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submit();
+  };
+
+  // Cmd/Ctrl+Enter submits from anywhere in the dialog (only while the discard
+  // guard is not up).
+  useSubmitShortcut(open && !confirmDiscard, submit);
 
   return (
     <>
@@ -398,6 +407,9 @@ export function FindingForm({
             <DialogTitle>
               {finding ? t("findings.editTitle") : t("findings.newTitle")}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {finding ? t("findings.editTitle") : t("findings.newTitle")}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* ── Classification ───────────────────────────────────────────── */}

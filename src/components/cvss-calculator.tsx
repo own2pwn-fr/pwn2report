@@ -334,7 +334,7 @@ export function CvssCalculator({
               className={cn(
                 "rounded px-3 py-1 text-xs font-medium transition-colors",
                 version === v
-                  ? "bg-[hsl(var(--accent-brand))] text-white"
+                  ? "bg-[hsl(var(--accent-brand-solid))] text-white"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >

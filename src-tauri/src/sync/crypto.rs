@@ -21,13 +21,26 @@ use age::secrecy::SecretString;
 use crate::error::{AppError, AppResult};
 
 /// Encrypt `plaintext` under `passphrase`, returning the age ciphertext bytes.
+/// In-memory convenience used by tests; production export streams via
+/// [`encrypt_to_writer`] to bound peak memory.
+#[cfg(test)]
 pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> AppResult<Vec<u8>> {
+    let mut out = Vec::new();
+    encrypt_to_writer(passphrase, plaintext, &mut out)?;
+    Ok(out)
+}
+
+/// Age-encrypt `plaintext` under `passphrase`, streaming the ciphertext directly
+/// into `dest` (any `Write`). This avoids materializing the whole ciphertext in
+/// a `Vec` first: the export path wraps a `BufWriter<File>` so peak memory stays
+/// bounded by ~one copy of the payload (the plaintext JSON) instead of holding
+/// plaintext + ciphertext + the file buffer all at once.
+pub fn encrypt_to_writer<W: Write>(passphrase: &str, plaintext: &[u8], dest: W) -> AppResult<()> {
     let secret = SecretString::from(passphrase.to_owned());
     let encryptor = age::Encryptor::with_user_passphrase(secret);
 
-    let mut out = Vec::new();
     let mut writer = encryptor
-        .wrap_output(&mut out)
+        .wrap_output(dest)
         .map_err(|e| AppError::Sync(format!("encryption setup failed: {e}")))?;
     writer
         .write_all(plaintext)
@@ -35,7 +48,7 @@ pub fn encrypt(passphrase: &str, plaintext: &[u8]) -> AppResult<Vec<u8>> {
     writer
         .finish()
         .map_err(|e| AppError::Sync(format!("encryption finalize failed: {e}")))?;
-    Ok(out)
+    Ok(())
 }
 
 /// Decrypt age `ciphertext` with `passphrase`. A wrong passphrase or a file that

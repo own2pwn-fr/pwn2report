@@ -9,20 +9,35 @@ use crate::sync::{self, SyncBundle, SyncSummary};
 
 /// Snapshot the unlocked vault, encrypt it under `passphrase`, and write the age
 /// bundle to `dest_path`. Rejects an empty passphrase.
+///
+/// The ciphertext is streamed: age wraps a `BufWriter<File>` and the JSON bytes
+/// are encrypted straight into the destination file, so we never hold a separate
+/// full-size ciphertext `Vec` in memory alongside the plaintext (which matters
+/// when the bundle carries many/large evidence images). Peak memory is bounded
+/// by ~one copy of the JSON payload rather than several multiples of it.
 #[tauri::command]
 pub fn export_sync_bundle(
     state: State<'_, AppState>,
     passphrase: String,
     dest_path: String,
 ) -> AppResult<()> {
+    use std::io::{BufWriter, Write};
+
     if passphrase.is_empty() {
         return Err(AppError::Sync("passphrase must not be empty".into()));
     }
 
     let json = state.with_conn(|conn| SyncBundle::snapshot(conn)?.to_json())?;
-    let ciphertext = sync::crypto::encrypt(&passphrase, &json)?;
-    std::fs::write(&dest_path, &ciphertext)
+
+    let file = std::fs::File::create(&dest_path)
         .map_err(|e| AppError::Io(format!("cannot write sync bundle: {e}")))?;
+    let mut writer = BufWriter::new(file);
+    sync::crypto::encrypt_to_writer(&passphrase, &json, &mut writer)?;
+    // Flush the BufWriter explicitly so any deferred write error surfaces here
+    // rather than being swallowed on drop.
+    writer
+        .flush()
+        .map_err(|e| AppError::Io(format!("cannot flush sync bundle: {e}")))?;
     Ok(())
 }
 

@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 interface Step {
   key: string;
@@ -56,6 +56,9 @@ export function OnboardingDialog({
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-w-md">
         <DialogTitle className="sr-only">{t(`onboarding.steps.${step.key}.title`)}</DialogTitle>
+        <DialogDescription className="sr-only">
+          {t(`onboarding.steps.${step.key}.body`)}
+        </DialogDescription>
         <div className="flex flex-col items-center gap-5 py-2 text-center">
           <AnimatePresence mode="wait">
             <motion.div

@@ -1,8 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ErrorBoundary } from "@/components/error-boundary";
 import App from "./App";
 import { initTheme } from "@/lib/use-theme";
 import "@/i18n";
@@ -22,11 +24,15 @@ const queryClient = new QueryClient({
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={300}>
-        <App />
-      </TooltipProvider>
-      <Toaster position="bottom-right" richColors closeButton theme="system" />
-    </QueryClientProvider>
+    <MotionConfig reducedMotion="user">
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delayDuration={300}>
+            <App />
+          </TooltipProvider>
+          <Toaster position="bottom-right" richColors closeButton theme="system" />
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </MotionConfig>
   </React.StrictMode>,
 );

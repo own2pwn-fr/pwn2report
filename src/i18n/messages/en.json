@@ -45,6 +45,16 @@
     "moveUp": "Move up",
     "moveDown": "Move down"
   },
+  "nav": {
+    "primary": "Primary navigation",
+    "skipToContent": "Skip to content",
+    "breadcrumb": "Breadcrumb"
+  },
+  "appError": {
+    "title": "Something broke",
+    "body": "An unexpected error occurred. Reloading usually fixes it. Your encrypted vault is unaffected.",
+    "reload": "Reload the app"
+  },
   "theme": {
     "toggle": "Toggle theme",
     "light": "Light mode",
@@ -99,6 +109,15 @@
     "deleted": "Deleted “{{title}}”.",
     "duplicated": "Duplicated “{{title}}”.",
     "duplicateError": "Could not duplicate the report.",
+    "searchPlaceholder": "Search reports by title or client…",
+    "noMatches": "No reports match your search.",
+    "filterAllTypes": "All types",
+    "sortLabel": "Sort by",
+    "sort": {
+      "updated": "Last updated",
+      "created": "Recently created",
+      "findings": "Finding count"
+    },
     "empty": {
       "title": "No reports yet",
       "body": "Create your first report to start documenting findings.",
@@ -133,6 +152,7 @@
     "exportError": "Could not export the report.",
     "exportCancelled": "Export cancelled.",
     "notFound": "Report not found.",
+    "breadcrumb": "{{client}} – {{title}}",
     "details": "Report details",
     "language": {
       "label": "Report language",
@@ -219,6 +239,7 @@
     },
     "import": {
       "title": "Import findings",
+      "description": "Import scanner output and merge it into this report's findings.",
       "format": "Scanner format",
       "file": "File",
       "chooseFile": "Choose file",
@@ -245,6 +266,33 @@
     "duplicated": "Duplicated “{{title}}”.",
     "duplicateError": "Could not duplicate the finding.",
     "createError": "Could not create the finding.",
+    "reorderError": "Could not reorder the findings.",
+    "order": {
+      "label": "Order",
+      "severity": "By severity",
+      "manual": "Manual",
+      "manualHint": "Drag the handle, or use the up/down buttons, to set the order.",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "dragHandle": "Drag to reorder"
+    },
+    "select": {
+      "toggle": "Select finding",
+      "selectAll": "Select all",
+      "clear": "Clear selection",
+      "count_one": "{{count}} selected",
+      "count_other": "{{count}} selected",
+      "bulkDelete": "Delete selected",
+      "bulkDeleteTitle": "Delete selected findings?",
+      "bulkDeleteConfirm_one": "Delete {{count}} selected finding? This cannot be undone.",
+      "bulkDeleteConfirm_other": "Delete {{count}} selected findings? This cannot be undone.",
+      "bulkDeleted_one": "Deleted {{count}} finding.",
+      "bulkDeleted_other": "Deleted {{count}} findings.",
+      "setTriage": "Set triage status",
+      "bulkTriageDone_one": "Updated {{count}} finding.",
+      "bulkTriageDone_other": "Updated {{count}} findings.",
+      "bulkError": "Could not update some findings."
+    },
     "addRow": "Add",
     "discard": {
       "title": "Discard unsaved changes?",
@@ -367,7 +415,19 @@
     "saveError": "Could not save the annotated image.",
     "deleteOriginalError": "Saved the redacted image, but could not delete the original. Delete it manually so the un-redacted version does not remain.",
     "redactHint": "Redaction is permanently baked into the saved pixels.",
-    "replaceHint": "Saving replaces the original with the redacted version. Redactions are permanently baked into the pixels and the un-redacted original is deleted."
+    "replaceHint": "Saving replaces the original with the redacted version. Redactions are permanently baked into the pixels and the un-redacted original is deleted.",
+    "toolbar": "Annotation tools",
+    "activeTool": "Active tool: {{tool}}",
+    "keyboard": {
+      "title": "Keyboard entry",
+      "hint": "Drawing needs a pointer. For keyboard-only redaction, enter a rectangle in image pixels and add it.",
+      "x": "X",
+      "y": "Y",
+      "width": "Width",
+      "height": "Height",
+      "add": "Add redaction",
+      "invalid": "Enter a positive width and height within the image bounds."
+    }
   },
   "kb": {
     "title": "Knowledge base",
@@ -514,6 +574,14 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Manage your vault and report templates.",
+    "sectionNav": "Settings sections",
+    "sections": {
+      "appearance": "Appearance",
+      "ai": "AI",
+      "security": "Security",
+      "sync": "Sync",
+      "templates": "Templates"
+    },
     "appearance": {
       "title": "Appearance",
       "subtitle": "Choose the app theme and language.",
@@ -577,7 +645,13 @@
       "backingUp": "Backing up…",
       "backupSuccess": "Vault backed up.",
       "backupError": "Could not back up the vault.",
-      "vaultFile": "Vault database"
+      "vaultFile": "Vault database",
+      "idleLockTitle": "Auto-lock when idle",
+      "idleLockHint": "Automatically lock the vault after a period of inactivity.",
+      "idleLockMinutes": "Idle timeout (minutes)",
+      "idleLockOff": "Off",
+      "idleLockUnit_one": "{{count}} minute",
+      "idleLockUnit_other": "{{count}} minutes"
     },
     "sync": {
       "title": "Sync",

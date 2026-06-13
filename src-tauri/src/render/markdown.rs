@@ -436,7 +436,7 @@ mod tests {
         let doc = build_document(
             &report,
             vec![finding],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,
@@ -459,7 +459,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![sample_finding()],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,
@@ -479,7 +479,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![sample_finding()],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,
@@ -543,7 +543,7 @@ mod tests {
         let doc = build_document(
             &report,
             vec![sample_finding()],
-            &HashMap::new(),
+            HashMap::new(),
             &scope,
             &fa,
             None,
@@ -566,7 +566,7 @@ mod tests {
         let mut report = sample_report();
         report.scope = String::new();
         report.methodology = String::new();
-        let doc = build_document(&report, vec![], &HashMap::new(), &[], &HashMap::new(), None);
+        let doc = build_document(&report, vec![], HashMap::new(), &[], &HashMap::new(), None);
         let md = to_markdown(&doc);
         assert!(!md.contains("## Scope"));
         assert!(!md.contains("## Methodology"));

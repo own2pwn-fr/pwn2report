@@ -29,7 +29,7 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Current schema version. Bump when adding a migration step (see module docs).
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 
 /// A single idempotent migration step.
 type MigrationStep = fn(&Connection) -> AppResult<()>;
@@ -44,6 +44,7 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
     (5, migrate_v5),
     (6, migrate_v6),
     (7, migrate_v7),
+    (8, migrate_v8),
 ];
 
 /// Apply any pending migrations and stamp the schema version.
@@ -337,6 +338,44 @@ fn migrate_v7(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// v8: index hygiene (no schema/data changes, only indexes — performance).
+///   - `idx_reports_updated` on `reports(updated_at)`: the main report list sorts
+///     `ORDER BY updated_at DESC`, which had no supporting index.
+///   - rebuild `idx_kb_entries_title` as case-insensitive (`COLLATE NOCASE`):
+///     the KB list sorts `ORDER BY title COLLATE NOCASE`, so the old
+///     binary-collation index couldn't serve the sort. Dropped + recreated.
+///   - `idx_assets_report` / `idx_scope_report` on `(report_id, sort_order)`:
+///     the per-report asset/scope lookups join+sort on these columns.
+///
+/// All statements are `IF NOT EXISTS`/`DROP IF EXISTS`, so the step is
+/// idempotent and converges on a re-run.
+///
+/// NOTE: JSON-shape CHECK constraints on the existing JSON text columns
+/// (description/remediation/custom_fields/…) are intentionally NOT added here:
+/// SQLite cannot `ALTER TABLE ... ADD CONSTRAINT`, so retrofitting them onto
+/// existing tables would require a full table rebuild (rename → recreate → copy
+/// → drop) per table — too invasive for this pass. Validation stays in the
+/// serde layer.
+fn migrate_v8(conn: &Connection) -> AppResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_reports_updated
+            ON reports(updated_at);
+
+        DROP INDEX IF EXISTS idx_kb_entries_title;
+        CREATE INDEX IF NOT EXISTS idx_kb_entries_title
+            ON kb_entries(title COLLATE NOCASE);
+
+        CREATE INDEX IF NOT EXISTS idx_assets_report
+            ON assets(report_id, sort_order);
+
+        CREATE INDEX IF NOT EXISTS idx_scope_report
+            ON scope_items(report_id, sort_order);
+        "#,
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,6 +588,100 @@ mod tests {
             )
             .unwrap();
         assert_eq!(report_cf, "{}");
+    }
+
+    /// True if an index with this name exists in the schema.
+    fn index_exists(conn: &Connection, name: &str) -> bool {
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?1",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap();
+        n == 1
+    }
+
+    /// A fresh DB has the v8 performance indexes, and the rebuilt KB title index
+    /// is case-insensitive (`COLLATE NOCASE`).
+    #[test]
+    fn fresh_db_has_v8_indexes() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        for idx in [
+            "idx_reports_updated",
+            "idx_kb_entries_title",
+            "idx_assets_report",
+            "idx_scope_report",
+        ] {
+            assert!(index_exists(&conn, idx), "{idx} missing");
+        }
+        // The rebuilt KB title index carries the NOCASE collation so it serves
+        // the `ORDER BY title COLLATE NOCASE` list query.
+        let sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_kb_entries_title'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            sql.to_uppercase().contains("NOCASE"),
+            "kb title index not case-insensitive: {sql}"
+        );
+    }
+
+    /// Upgrading a v7 vault to current adds the v8 indexes (and rebuilds the KB
+    /// title index) without dropping data.
+    #[test]
+    fn upgrade_from_v7_adds_v8_indexes() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate_v1(&conn).unwrap();
+        migrate_v2(&conn).unwrap();
+        migrate_v3(&conn).unwrap();
+        migrate_v4(&conn).unwrap();
+        migrate_v5(&conn).unwrap();
+        migrate_v6(&conn).unwrap();
+        migrate_v7(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 7i64).unwrap();
+        // The old (binary-collation) KB title index from migrate_v2 is present.
+        assert!(index_exists(&conn, "idx_kb_entries_title"));
+        conn.execute(
+            "INSERT INTO reports (id, title, report_type, created_at, updated_at) \
+             VALUES ('r1', 't', 'web_pentest', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+        init(&conn).unwrap();
+
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, SCHEMA_VERSION);
+        for idx in [
+            "idx_reports_updated",
+            "idx_kb_entries_title",
+            "idx_assets_report",
+            "idx_scope_report",
+        ] {
+            assert!(index_exists(&conn, idx), "{idx} missing after upgrade");
+        }
+        let sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_kb_entries_title'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(sql.to_uppercase().contains("NOCASE"));
+        // Pre-existing data survived.
+        let title: String = conn
+            .query_row("SELECT title FROM reports WHERE id = 'r1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(title, "t");
     }
 
     /// Upgrading a v6 vault to current adds the v7 columns without dropping data.

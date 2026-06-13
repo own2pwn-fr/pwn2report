@@ -75,6 +75,7 @@ pub fn run() {
             commands::evidence::add_evidence_image,
             commands::evidence::list_evidence_images,
             commands::evidence::get_evidence_image,
+            commands::evidence::get_evidence_images_data,
             commands::evidence::update_evidence_caption,
             commands::evidence::delete_evidence_image,
             commands::evidence::reorder_evidence_images,

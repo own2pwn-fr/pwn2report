@@ -7,12 +7,14 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useSubmitShortcut } from "@/lib/use-hotkeys";
 import {
   Select,
   SelectContent,
@@ -92,11 +94,17 @@ export function ImportFindingsDialog({
     onImport(format, content);
   };
 
+  // Cmd/Ctrl+Enter triggers the import once a file is loaded.
+  useSubmitShortcut(open, () => {
+    if (!pending && !reading && content != null) handleSubmit();
+  });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("findings.import.title")}</DialogTitle>
+          <DialogDescription>{t("findings.import.description")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">

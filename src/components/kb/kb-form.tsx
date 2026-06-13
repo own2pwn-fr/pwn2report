@@ -16,11 +16,13 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CvssCalculator } from "@/components/cvss-calculator";
+import { useSubmitShortcut } from "@/lib/use-hotkeys";
 import type {
   Confidence,
   FindingKind,
@@ -225,18 +227,25 @@ export function KbForm({
   const set = <K extends keyof KbFormState>(key: K, value: KbFormState[K]) =>
     setState((prev) => ({ ...prev, [key]: value }));
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = () => {
     if (!state.title.trim()) return;
     if (entry) onUpdate(entry.id, toNewEntry(state));
     else onCreate(toNewEntry(state));
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submit();
+  };
+
+  useSubmitShortcut(open, submit);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{entry ? t("kb.editTitle") : t("kb.newTitle")}</DialogTitle>
+          <DialogDescription>{t("kb.subtitle")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* ── Classification ───────────────────────────────────────────── */}

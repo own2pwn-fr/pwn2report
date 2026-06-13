@@ -55,7 +55,7 @@ fn build_doc(state: &AppState, report_id: &str) -> AppResult<content_model::Repo
     Ok(content_model::build_document(
         &report,
         findings,
-        &images,
+        images,
         &scope_items,
         &finding_assets,
         logo.as_ref(),

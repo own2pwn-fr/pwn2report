@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Eraser, MousePointer, Pencil, Save, Square, Undo2 } from "lucide-react";
+import { Eraser, MousePointer, Pencil, Plus, Save, Square, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/ipc";
+import { useSubmitShortcut } from "@/lib/use-hotkeys";
 import { canvasToPngBytes, objectUrlFromBytes } from "@/lib/image";
 import {
   useAddEvidenceImage,
@@ -112,6 +114,9 @@ export function Annotator({
   const [tool, setTool] = useState<Tool>("redact");
   const [color, setColor] = useState("#ef4444");
   const [ready, setReady] = useState(false);
+  // Keyboard-only redaction rectangle (image pixels). Drawing needs a pointer,
+  // so this gives keyboard users a documented fallback for the redact tool.
+  const [kbRect, setKbRect] = useState({ x: "", y: "", w: "", h: "" });
   // Bump to force a re-render (e.g. after undo/clear) without storing shapes in state.
   const [, setTick] = useState(0);
   const rerender = () => setTick((n) => n + 1);
@@ -212,6 +217,35 @@ export function Annotator({
     repaint();
   };
 
+  // Add a redaction rectangle from the numeric keyboard inputs (image pixels).
+  const addKeyboardRedaction = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const x = Number(kbRect.x);
+    const y = Number(kbRect.y);
+    const w = Number(kbRect.w);
+    const h = Number(kbRect.h);
+    const valid =
+      [x, y, w, h].every((n) => Number.isFinite(n)) &&
+      w > 0 &&
+      h > 0 &&
+      x >= 0 &&
+      y >= 0 &&
+      x + w <= canvas.width &&
+      y + h <= canvas.height;
+    if (!valid) {
+      toast.error(t("annotator.keyboard.invalid"));
+      return;
+    }
+    shapesRef.current = [
+      ...shapesRef.current,
+      { type: "redact", a: { x, y }, b: { x: x + w, y: y + h } },
+    ];
+    setKbRect({ x: "", y: "", w: "", h: "" });
+    rerender();
+    repaint();
+  };
+
   const handleSave = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -244,6 +278,11 @@ export function Annotator({
     }
   };
 
+  // Cmd/Ctrl+Enter saves the annotated image.
+  useSubmitShortcut(open, () => {
+    if (!addImage.isPending && !deleteImage.isPending) void handleSave();
+  });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
@@ -252,7 +291,16 @@ export function Annotator({
           <DialogDescription>{t("annotator.replaceHint")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border p-2">
+        {/* Announce the active tool to assistive tech. */}
+        <p aria-live="polite" className="sr-only">
+          {t("annotator.activeTool", { tool: t(`annotator.tools.${tool}`) })}
+        </p>
+
+        <div
+          role="group"
+          aria-label={t("annotator.toolbar")}
+          className="flex flex-wrap items-center gap-3 rounded-lg border p-2"
+        >
           <div className="flex items-center gap-1">
             {TOOLS.map(({ id, icon: Icon }) => (
               <Button
@@ -260,6 +308,7 @@ export function Annotator({
                 type="button"
                 size="sm"
                 variant={tool === id ? "brand" : "outline"}
+                aria-pressed={tool === id}
                 onClick={() => setTool(id)}
                 title={t(`annotator.tools.${id}`)}
               >
@@ -310,10 +359,45 @@ export function Annotator({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            aria-label={t("annotator.title")}
             className="max-w-full touch-none"
             style={{ height: "auto", cursor: ready ? "crosshair" : "wait" }}
           />
         </div>
+
+        {/* Keyboard-only fallback: enter a redaction rectangle numerically. */}
+        <details className="rounded-lg border p-2 text-sm">
+          <summary className="cursor-pointer select-none font-medium">
+            {t("annotator.keyboard.title")}
+          </summary>
+          <p className="mt-2 text-xs text-muted-foreground">{t("annotator.keyboard.hint")}</p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            {(["x", "y", "w", "h"] as const).map((field) => (
+              <div key={field} className="space-y-1">
+                <Label htmlFor={`kb-${field}`} className="text-xs text-muted-foreground">
+                  {t(
+                    `annotator.keyboard.${
+                      field === "w" ? "width" : field === "h" ? "height" : field
+                    }`,
+                  )}
+                </Label>
+                <Input
+                  id={`kb-${field}`}
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={kbRect[field]}
+                  onChange={(e) => setKbRect((r) => ({ ...r, [field]: e.target.value }))}
+                  className="h-8 w-20 font-mono text-xs"
+                />
+              </div>
+            ))}
+            <Button type="button" size="sm" variant="outline" onClick={addKeyboardRedaction}>
+              <Plus />
+              {t("annotator.keyboard.add")}
+            </Button>
+          </div>
+        </details>
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

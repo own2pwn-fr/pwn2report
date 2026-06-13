@@ -141,7 +141,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![sample_finding()],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,

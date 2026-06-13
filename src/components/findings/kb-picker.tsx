@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -50,6 +51,7 @@ export function KbPicker({
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden">
         <DialogHeader>
           <DialogTitle>{t("findings.kbPicker.title")}</DialogTitle>
+          <DialogDescription>{t("kb.subtitle")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <Input

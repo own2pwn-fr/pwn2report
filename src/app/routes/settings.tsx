@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "motion/react";
 import {
-  ArrowLeft,
   KeyRound,
   Save,
   ShieldCheck,
@@ -45,7 +43,6 @@ import {
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { LanguageToggle } from "@/components/language-toggle";
 import { backupVault, changePassphrase, errorMessage } from "@/lib/ipc";
 import {
   useResetTemplate,
@@ -61,6 +58,7 @@ import {
 } from "@/lib/queries/use-ai";
 import { useExportSyncBundle, useImportSyncBundle } from "@/lib/queries/use-sync";
 import { useOnboarding } from "@/lib/use-onboarding";
+import { useIdleLockSetting } from "@/lib/use-idle-lock";
 import { setLanguage, SUPPORTED_LANGUAGES, type Language } from "@/i18n";
 import type { AiConfig, AiProvider, ReportType, SyncSummary } from "@/lib/types";
 
@@ -437,8 +435,11 @@ function AiSection() {
   );
 }
 
+const IDLE_LOCK_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
+
 function SecuritySection() {
   const { t } = useTranslation();
+  const [idleMinutes, setIdleMinutes] = useIdleLockSetting();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -556,6 +557,37 @@ function SecuritySection() {
             <HardDriveDownload />
             {backing ? t("settings.security.backingUp") : t("settings.security.backupCta")}
           </Button>
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">{t("settings.security.idleLockTitle")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.security.idleLockHint")}
+            </p>
+          </div>
+          <div className="w-44 space-y-1.5">
+            <Label htmlFor="idle-lock">{t("settings.security.idleLockMinutes")}</Label>
+            <Select
+              value={String(idleMinutes)}
+              onValueChange={(v) => setIdleMinutes(Number(v))}
+            >
+              <SelectTrigger id="idle-lock">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {IDLE_LOCK_OPTIONS.map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {m === 0
+                      ? t("settings.security.idleLockOff")
+                      : t("settings.security.idleLockUnit", { count: m })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -929,40 +961,83 @@ function TemplatesSection() {
   );
 }
 
+const SETTINGS_SECTIONS = [
+  { id: "appearance", Component: AppearanceSection },
+  { id: "ai", Component: AiSection },
+  { id: "security", Component: SecuritySection },
+  { id: "sync", Component: SyncSection },
+  { id: "templates", Component: TemplatesSection },
+] as const;
+
 export function Settings() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const [active, setActive] = useState<string>(SETTINGS_SECTIONS[0].id);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Highlight the section currently in view as the user scrolls.
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) setActive(visible.target.id);
+      },
+      { rootMargin: "-20% 0px -70% 0px", threshold: [0, 0.25, 0.5, 1] },
+    );
+    const container = containerRef.current;
+    container?.querySelectorAll("[data-settings-section]").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollTo = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActive(sectionId);
+    }
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2 }}
-      className="mx-auto max-w-3xl px-6 py-8"
-    >
-      <div className="mb-6 flex items-center justify-between">
-        <Button variant="ghost" onClick={() => navigate("/")}>
-          <ArrowLeft />
-          {t("common.back")}
-        </Button>
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <LanguageToggle />
-        </div>
-      </div>
-
+    <div className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">{t("settings.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("settings.subtitle")}</p>
       </header>
 
-      <div className="space-y-6">
-        <AppearanceSection />
-        <AiSection />
-        <SecuritySection />
-        <SyncSection />
-        <TemplatesSection />
+      <div className="gap-8 md:flex">
+        <nav
+          aria-label={t("settings.sectionNav")}
+          className="mb-6 md:sticky md:top-20 md:mb-0 md:h-fit md:w-48 md:shrink-0"
+        >
+          <ul className="flex flex-wrap gap-1 md:flex-col">
+            {SETTINGS_SECTIONS.map(({ id }) => (
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => scrollTo(id)}
+                  aria-current={active === id ? "true" : undefined}
+                  className={`w-full rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors ${
+                    active === id
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  {t(`settings.sections.${id}`)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div ref={containerRef} className="min-w-0 flex-1 space-y-6">
+          {SETTINGS_SECTIONS.map(({ id, Component }) => (
+            <section key={id} id={id} data-settings-section className="scroll-mt-20">
+              <Component />
+            </section>
+          ))}
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

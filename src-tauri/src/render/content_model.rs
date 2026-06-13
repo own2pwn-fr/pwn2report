@@ -471,10 +471,12 @@ fn asset_to_input(a: &Asset, labels: &Labels) -> AssetInput {
 impl FindingInput {
     /// Project a DB `Finding` (plus its evidence images) into the
     /// template-friendly shape. `images` is the `(caption, mime, bytes)` list
-    /// for this finding, already ordered; an empty slice yields no images.
+    /// for this finding, already ordered, taken BY VALUE so the image bytes are
+    /// MOVED into the IR rather than copied — they then exist exactly once for
+    /// the duration of an export. An empty vec yields no images.
     fn from_finding(
         f: &Finding,
-        images: &[ImageSource],
+        images: Vec<ImageSource>,
         assets: &[Asset],
         labels: &Labels,
     ) -> Self {
@@ -528,11 +530,11 @@ impl FindingInput {
                 .unwrap_or_default(),
             poc_payload: poc.and_then(|p| p.payload.clone()).unwrap_or_default(),
             images: images
-                .iter()
+                .into_iter()
                 .map(|(caption, mime, data)| FindingImage {
-                    caption: caption.clone(),
-                    mime: mime.clone(),
-                    data: Bytes::new(data.clone()),
+                    caption,
+                    mime,
+                    data: Bytes::new(data),
                 })
                 .collect(),
             affected_assets: assets.iter().map(|a| asset_to_input(a, labels)).collect(),
@@ -569,16 +571,19 @@ impl FindingInput {
 /// PDF leads with the most important issues. `date` is the report's
 /// `updated_at` truncated to the date portion (falls back to the full string).
 ///
-/// `images` maps a finding id to its ordered `(caption, mime, bytes)` list;
-/// findings absent from the map render with no images. `scope_items` are the
-/// report's structured scope rows (in author order); `finding_assets` maps a
-/// finding id to its ordered affected assets; `logo` is the report's branding
-/// logo as `(mime, bytes)` when present. This function stays pure (no DB) — the
-/// command/export layer fetches the bytes and builds the maps.
+/// `images` maps a finding id to its ordered `(caption, mime, bytes)` list and
+/// is CONSUMED: each finding's bytes are moved out of the map and into the IR so
+/// the (potentially large) image bytes are never copied during export — they
+/// exist exactly once. Findings absent from the map render with no images.
+/// `scope_items` are the report's structured scope rows (in author order);
+/// `finding_assets` maps a finding id to its ordered affected assets; `logo` is
+/// the report's branding logo as `(mime, bytes)` when present. This function
+/// stays pure (no DB) — the command/export layer fetches the bytes and builds
+/// the maps.
 pub fn build_document(
     report: &Report,
     mut findings: Vec<Finding>,
-    images: &HashMap<String, Vec<ImageSource>>,
+    mut images: HashMap<String, Vec<ImageSource>>,
     scope_items: &[ScopeItem],
     finding_assets: &HashMap<String, Vec<Asset>>,
     logo: Option<&(String, Vec<u8>)>,
@@ -657,7 +662,8 @@ pub fn build_document(
         findings: findings
             .iter()
             .map(|f| {
-                let imgs = images.get(&f.id).map(Vec::as_slice).unwrap_or(&[]);
+                // Move the bytes out of the map (consumed) so they are not copied.
+                let imgs = images.remove(&f.id).unwrap_or_default();
                 let assets = finding_assets.get(&f.id).map(Vec::as_slice).unwrap_or(&[]);
                 FindingInput::from_finding(f, imgs, assets, &labels)
             })

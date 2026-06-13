@@ -213,6 +213,29 @@ pub fn get_data(conn: &Connection, id: &str) -> AppResult<(String, Vec<u8>)> {
     }
 }
 
+/// Fetch every live image's `(id, mime, bytes)` for a finding in one query,
+/// ordered like [`list`] (`sort_order, created_at`). This is the batched
+/// counterpart to [`get_data`]: the gallery uses it to pull all of a finding's
+/// image bytes with a single call instead of one [`get_data`] per image (N+1).
+pub fn get_data_for_finding(
+    conn: &Connection,
+    finding_id: &str,
+) -> AppResult<Vec<(String, String, Vec<u8>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, mime, data FROM evidence_images \
+         WHERE finding_id = ?1 AND deleted_at IS NULL ORDER BY sort_order, created_at",
+    )?;
+    let mut rows = stmt.query(params![finding_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let id: String = row.get("id")?;
+        let mime: String = row.get("mime")?;
+        let data: Vec<u8> = row.get("data")?;
+        out.push((id, mime, data));
+    }
+    Ok(out)
+}
+
 /// Update an image's caption; returns the updated metadata.
 pub fn update_caption(conn: &Connection, id: &str, caption: &str) -> AppResult<EvidenceImage> {
     let n = conn.execute(

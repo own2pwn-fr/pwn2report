@@ -45,6 +45,16 @@
     "moveUp": "Monter",
     "moveDown": "Descendre"
   },
+  "nav": {
+    "primary": "Navigation principale",
+    "skipToContent": "Aller au contenu",
+    "breadcrumb": "Fil d'Ariane"
+  },
+  "appError": {
+    "title": "Une erreur est survenue",
+    "body": "Une erreur inattendue s'est produite. Recharger règle généralement le problème. Votre coffre-fort chiffré n'est pas affecté.",
+    "reload": "Recharger l'application"
+  },
   "theme": {
     "toggle": "Changer de thème",
     "light": "Mode clair",
@@ -99,6 +109,15 @@
     "deleted": "« {{title}} » supprimé.",
     "duplicated": "« {{title}} » dupliqué.",
     "duplicateError": "Impossible de dupliquer le rapport.",
+    "searchPlaceholder": "Rechercher par titre ou client…",
+    "noMatches": "Aucun rapport ne correspond à votre recherche.",
+    "filterAllTypes": "Tous les types",
+    "sortLabel": "Trier par",
+    "sort": {
+      "updated": "Dernière modification",
+      "created": "Créés récemment",
+      "findings": "Nombre de vulnérabilités"
+    },
     "empty": {
       "title": "Aucun rapport pour l'instant",
       "body": "Créez votre premier rapport pour commencer à documenter vos vulnérabilités.",
@@ -133,6 +152,7 @@
     "exportError": "Impossible d'exporter le rapport.",
     "exportCancelled": "Export annulé.",
     "notFound": "Rapport introuvable.",
+    "breadcrumb": "{{client}} – {{title}}",
     "details": "Détails du rapport",
     "language": {
       "label": "Langue du rapport",
@@ -219,6 +239,7 @@
     },
     "import": {
       "title": "Importer des vulnérabilités",
+      "description": "Importez la sortie d'un scanner et fusionnez-la dans les vulnérabilités de ce rapport.",
       "format": "Format du scanner",
       "file": "Fichier",
       "chooseFile": "Choisir un fichier",
@@ -245,6 +266,33 @@
     "duplicated": "« {{title}} » dupliquée.",
     "duplicateError": "Impossible de dupliquer la vulnérabilité.",
     "createError": "Impossible de créer la vulnérabilité.",
+    "reorderError": "Impossible de réordonner les vulnérabilités.",
+    "order": {
+      "label": "Ordre",
+      "severity": "Par sévérité",
+      "manual": "Manuel",
+      "manualHint": "Glissez la poignée, ou utilisez les boutons haut/bas, pour définir l'ordre.",
+      "moveUp": "Monter",
+      "moveDown": "Descendre",
+      "dragHandle": "Glisser pour réordonner"
+    },
+    "select": {
+      "toggle": "Sélectionner la vulnérabilité",
+      "selectAll": "Tout sélectionner",
+      "clear": "Effacer la sélection",
+      "count_one": "{{count}} sélectionnée",
+      "count_other": "{{count}} sélectionnées",
+      "bulkDelete": "Supprimer la sélection",
+      "bulkDeleteTitle": "Supprimer les vulnérabilités sélectionnées ?",
+      "bulkDeleteConfirm_one": "Supprimer {{count}} vulnérabilité sélectionnée ? Cette action est irréversible.",
+      "bulkDeleteConfirm_other": "Supprimer {{count}} vulnérabilités sélectionnées ? Cette action est irréversible.",
+      "bulkDeleted_one": "{{count}} vulnérabilité supprimée.",
+      "bulkDeleted_other": "{{count}} vulnérabilités supprimées.",
+      "setTriage": "Définir le statut de tri",
+      "bulkTriageDone_one": "{{count}} vulnérabilité mise à jour.",
+      "bulkTriageDone_other": "{{count}} vulnérabilités mises à jour.",
+      "bulkError": "Impossible de mettre à jour certaines vulnérabilités."
+    },
     "addRow": "Ajouter",
     "discard": {
       "title": "Abandonner les modifications non enregistrées ?",
@@ -367,7 +415,19 @@
     "saveError": "Impossible d'enregistrer l'image annotée.",
     "deleteOriginalError": "Image masquée enregistrée, mais impossible de supprimer l'original. Supprimez-le manuellement pour que la version non masquée ne subsiste pas.",
     "redactHint": "Le masquage est définitivement intégré aux pixels enregistrés.",
-    "replaceHint": "L'enregistrement remplace l'original par la version masquée. Les masquages sont définitivement intégrés aux pixels et l'original non masqué est supprimé."
+    "replaceHint": "L'enregistrement remplace l'original par la version masquée. Les masquages sont définitivement intégrés aux pixels et l'original non masqué est supprimé.",
+    "toolbar": "Outils d'annotation",
+    "activeTool": "Outil actif : {{tool}}",
+    "keyboard": {
+      "title": "Saisie au clavier",
+      "hint": "Le dessin nécessite un pointeur. Pour un masquage au clavier uniquement, saisissez un rectangle en pixels de l'image et ajoutez-le.",
+      "x": "X",
+      "y": "Y",
+      "width": "Largeur",
+      "height": "Hauteur",
+      "add": "Ajouter un masquage",
+      "invalid": "Saisissez une largeur et une hauteur positives dans les limites de l'image."
+    }
   },
   "kb": {
     "title": "Base de connaissances",
@@ -514,6 +574,14 @@
   "settings": {
     "title": "Paramètres",
     "subtitle": "Gérez votre coffre-fort et vos modèles de rapport.",
+    "sectionNav": "Sections des paramètres",
+    "sections": {
+      "appearance": "Apparence",
+      "ai": "IA",
+      "security": "Sécurité",
+      "sync": "Synchronisation",
+      "templates": "Modèles"
+    },
     "appearance": {
       "title": "Apparence",
       "subtitle": "Choisissez le thème et la langue de l'application.",
@@ -577,7 +645,13 @@
       "backingUp": "Sauvegarde en cours…",
       "backupSuccess": "Coffre-fort sauvegardé.",
       "backupError": "Impossible de sauvegarder le coffre-fort.",
-      "vaultFile": "Base de données du coffre-fort"
+      "vaultFile": "Base de données du coffre-fort",
+      "idleLockTitle": "Verrouillage automatique en cas d'inactivité",
+      "idleLockHint": "Verrouille automatiquement le coffre-fort après une période d'inactivité.",
+      "idleLockMinutes": "Délai d'inactivité (minutes)",
+      "idleLockOff": "Désactivé",
+      "idleLockUnit_one": "{{count}} minute",
+      "idleLockUnit_other": "{{count}} minutes"
     },
     "sync": {
       "title": "Synchronisation",

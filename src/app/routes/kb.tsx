@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, BookMarked, Pencil, Plus, Trash2 } from "lucide-react";
+import { BookMarked, Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { CardGridSkeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -27,6 +27,7 @@ import {
   useUpdateKbEntry,
 } from "@/lib/queries/use-kb";
 import { errorMessage } from "@/lib/ipc";
+import { useHotkey } from "@/lib/use-hotkeys";
 import { SEVERITY_ORDER, severityRank } from "@/lib/format";
 import type { KbEntry, KbPatch, NewKbEntry, Severity } from "@/lib/types";
 
@@ -34,7 +35,6 @@ type SeverityFilter = "all" | Severity;
 
 export function KnowledgeBase() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { data: entries, isLoading } = useKbEntries();
   const createEntry = useCreateKbEntry();
   const updateEntry = useUpdateKbEntry();
@@ -46,6 +46,8 @@ export function KnowledgeBase() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<KbEntry | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<KbEntry | null>(null);
+
+  useHotkey("/", () => document.getElementById("kb-search")?.focus());
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -112,13 +114,6 @@ export function KnowledgeBase() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
-      <div className="mb-6">
-        <Button variant="ghost" onClick={() => navigate("/")}>
-          <ArrowLeft />
-          {t("common.back")}
-        </Button>
-      </div>
-
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="display-xl">{t("kb.title")}</h1>
@@ -142,6 +137,7 @@ export function KnowledgeBase() {
       {entries && entries.length > 0 && (
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
+            id="kb-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("kb.searchPlaceholder")}
@@ -167,7 +163,7 @@ export function KnowledgeBase() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+        <CardGridSkeleton />
       ) : !entries || entries.length === 0 ? (
         <EmptyState
           icon={BookMarked}

@@ -78,7 +78,7 @@ fn e2e_create_render_all_formats() {
         let doc = build_document(
             &report,
             findings.clone(),
-            &images,
+            images.clone(),
             &[],
             &HashMap::new(),
             None,
@@ -90,7 +90,7 @@ fn e2e_create_render_all_formats() {
     let doc = build_document(
         &report,
         findings.clone(),
-        &images,
+        images,
         &[],
         &HashMap::new(),
         None,
@@ -101,6 +101,92 @@ fn e2e_create_render_all_formats() {
     assert!(html.contains("data:image/png;base64,"));
 
     let _ = std::fs::remove_file(&path);
+}
+
+/// The batched evidence fetch (`get_data_for_finding`, backing the
+/// `get_evidence_images_data` command) returns ALL of a finding's live images in
+/// one query, in sort order, and skips soft-deleted ones — replacing the per-
+/// image N+1 `get_data` round-trip the gallery used to do.
+#[test]
+fn e2e_batch_evidence_fetch_returns_all_live_images() {
+    let path = tmp("batch-evidence");
+    let conn = connection::create_encrypted(&path, "p").unwrap();
+    let (_rid, fid) = seed_report_with_finding(&conn);
+
+    // Three images appended in order; capture ids so we can delete one.
+    let a = db::evidence::add(&conn, &fid, "first", "image/png", &png_1x1()).unwrap();
+    let _b = db::evidence::add(&conn, &fid, "second", "image/jpeg", &[0xff, 0xd8, 0xff]).unwrap();
+    let c = db::evidence::add(&conn, &fid, "third", "image/png", &png_1x1()).unwrap();
+
+    // All three live: one call returns them in sort order with bytes intact.
+    let all = db::evidence::get_data_for_finding(&conn, &fid).unwrap();
+    assert_eq!(all.len(), 3);
+    assert_eq!(all[0].0, a.id);
+    assert_eq!(all[0].1, "image/png");
+    assert_eq!(all[1].1, "image/jpeg");
+    assert_eq!(all[1].2, vec![0xff, 0xd8, 0xff]);
+    assert_eq!(all[2].0, c.id);
+
+    // Soft-deleting one drops it from the batch result (live-only).
+    db::evidence::delete(&conn, &c.id).unwrap();
+    let live = db::evidence::get_data_for_finding(&conn, &fid).unwrap();
+    assert_eq!(live.len(), 2);
+    assert!(live.iter().all(|(id, _, _)| *id != c.id));
+
+    // A finding with no images yields an empty vec, not an error.
+    let (_r2, fid2) = seed_report_with_finding(&conn);
+    assert!(db::evidence::get_data_for_finding(&conn, &fid2)
+        .unwrap()
+        .is_empty());
+
+    let _ = std::fs::remove_file(&path);
+}
+
+/// The streaming export path (`encrypt_to_writer` into a `BufWriter<File>`)
+/// produces a file that decrypts + parses + merges into a peer vault — i.e. the
+/// memory-bounded encrypt-to-file still round-trips through import.
+#[test]
+fn e2e_streaming_export_to_file_round_trips_through_import() {
+    use std::io::{BufWriter, Write};
+
+    let src_path = tmp("stream-src");
+    let src = connection::create_encrypted(&src_path, "pp").unwrap();
+    let (_rid, fid) = seed_report_with_finding(&src);
+    db::evidence::add(&src, &fid, "shot", "image/png", &png_1x1()).unwrap();
+
+    // Encrypt straight into a file, exactly as `export_sync_bundle` now does.
+    let json = SyncBundle::snapshot(&src).unwrap().to_json().unwrap();
+    let bundle_path = tmp("stream-bundle");
+    {
+        let file = std::fs::File::create(&bundle_path).unwrap();
+        let mut w = BufWriter::new(file);
+        crypto::encrypt_to_writer("stream-secret", &json, &mut w).unwrap();
+        w.flush().unwrap();
+    }
+
+    // Read the file back, decrypt, parse, and merge into a fresh vault.
+    let cipher = std::fs::read(&bundle_path).unwrap();
+    assert!(crypto::decrypt("WRONG", &cipher).is_err());
+    let plain = crypto::decrypt("stream-secret", &cipher).unwrap();
+    let bundle = SyncBundle::from_json(&plain).unwrap();
+
+    let dst_path = tmp("stream-dst");
+    let mut dst = connection::create_encrypted(&dst_path, "other").unwrap();
+    let summary = merge(&mut dst, bundle).unwrap();
+    assert_eq!(summary.reports_added, 1);
+    assert_eq!(summary.findings_added, 1);
+    assert_eq!(summary.images_added, 1);
+
+    // The streamed-then-imported image bytes match the original.
+    let reports = db::reports::list(&dst).unwrap();
+    let findings = db::findings::list(&dst, &reports[0].id).unwrap();
+    let imgs = db::evidence::get_data_for_finding(&dst, &findings[0].id).unwrap();
+    assert_eq!(imgs.len(), 1);
+    assert_eq!(imgs[0].2, png_1x1());
+
+    let _ = std::fs::remove_file(&src_path);
+    let _ = std::fs::remove_file(&dst_path);
+    let _ = std::fs::remove_file(&bundle_path);
 }
 
 /// Importing a SARIF report adds findings to the report.

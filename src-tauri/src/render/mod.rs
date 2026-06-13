@@ -40,7 +40,7 @@ mod tests {
             let doc = build_document(
                 &sample_report(),
                 vec![sample_finding()],
-                &HashMap::new(),
+                HashMap::new(),
                 &[],
                 &HashMap::new(),
                 None,
@@ -62,7 +62,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![sample_finding()],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,
@@ -90,7 +90,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![sample_finding()],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,
@@ -127,7 +127,7 @@ mod tests {
             let doc = build_document(
                 &sample_report(),
                 vec![sample_finding()],
-                &images,
+                images.clone(),
                 &[],
                 &HashMap::new(),
                 None,
@@ -175,7 +175,7 @@ mod tests {
             let doc = build_document(
                 &report,
                 vec![finding.clone()],
-                &HashMap::new(),
+                HashMap::new(),
                 &[],
                 &HashMap::new(),
                 None,
@@ -203,7 +203,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![finding],
-            &HashMap::new(),
+            HashMap::new(),
             &[],
             &HashMap::new(),
             None,
@@ -260,7 +260,7 @@ mod tests {
         let doc = build_document(
             &sample_report(),
             vec![sample_finding()],
-            &images,
+            images,
             &[],
             &HashMap::new(),
             None,

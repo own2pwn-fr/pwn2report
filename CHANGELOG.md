@@ -5,6 +5,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### UX & accessibility overhaul (frontend)
+- **Persistent app shell**: a single top-bar navigation (Reports / Knowledge Base / Settings + Lock) replaces
+  the per-route header blocks. Route changes move focus to the main region, there's a skip-to-content link,
+  and a history-aware "Back" plus breadcrumbs on report-detail.
+- **WCAG contrast**: new `--accent-brand-solid` token (darker violet) backs filled brand CTAs and selected
+  chips/toggles so white-on-brand clears AA (≥4.5:1); the lighter `--accent-brand` stays for tints/borders/text.
+- **Motion & robustness**: app wrapped in `MotionConfig reducedMotion="user"`; every route animates through the
+  shell's shared page transitions; a styled React error boundary with reload replaces blank-screen crashes.
+- **Loading**: skeleton placeholders on reports, KB and report-detail instead of bare "Loading…".
+- **Keyboard**: Cmd/Ctrl+Enter submits open dialogs (new report, finding, KB, import, annotator); `n` adds a
+  finding on report-detail; `/` focuses search on the reports and KB lists.
+- **Findings**: manual reorder (up/down, persisted via `reorder_findings`) with a severity-vs-manual order
+  toggle; multi-select with bulk delete (undoable) and bulk triage-status set.
+- **Reports list**: search box + type filter + sort (updated / created / finding count).
+- **Settings**: in-page anchored section navigation (Appearance / AI / Security / Sync / Templates) with
+  scroll-spy; optional idle auto-lock (Security, default 15 min, 0 = off) that locks the vault after inactivity.
+- **Dialogs & annotator**: missing `DialogDescription`/aria added across dialogs; the empty-state "New report"
+  CTA now drives lifted dialog state instead of a DOM `querySelector().click()`; the annotator announces the
+  active tool (aria-live), exposes a keyboard-only numeric redaction-rectangle fallback, and labels its color
+  picker.
+
 ### AI provider depth
 - **More providers**: Azure OpenAI and Google Gemini (alongside Ollama / OpenAI-compatible / Anthropic);
   the OpenAI key is now optional so keyless local servers (LM Studio) work.

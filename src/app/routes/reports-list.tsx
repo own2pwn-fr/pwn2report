@@ -1,15 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
-import {
-  BookMarked,
-  Copy,
-  FileText,
-  Plus,
-  Trash2,
-  Lock,
-  Settings as SettingsIcon,
-} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { Copy, FileText, Plus, Trash2, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -26,15 +18,13 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { LanguageToggle } from "@/components/language-toggle";
+import { CardGridSkeleton } from "@/components/ui/skeleton";
 import { ReportLanguageSelect } from "@/components/report-language-select";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
@@ -45,13 +35,15 @@ import {
   useDeleteReport,
   useReports,
 } from "@/lib/queries/use-reports";
-import { useLockVault } from "@/lib/queries/use-vault";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
+import { useHotkey, useSubmitShortcut } from "@/lib/use-hotkeys";
 import { errorMessage } from "@/lib/ipc";
 import { formatDate } from "@/lib/format";
 import type { ReportSummary, ReportType } from "@/lib/types";
 
 const REPORT_TYPES: ReportType[] = ["web_pentest", "code_audit", "red_team"];
+type SortKey = "updated" | "created" | "findings";
+type TypeFilter = "all" | ReportType;
 
 /** Resolve the active UI language down to a supported short code (default "en"). */
 function uiLanguage(raw: string): string {
@@ -59,9 +51,16 @@ function uiLanguage(raw: string): string {
   return (SUPPORTED_LANGUAGES as readonly string[]).includes(short) ? short : "en";
 }
 
-function NewReportDialog({ onCreated }: { onCreated: (id: string) => void }) {
+function NewReportDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (id: string) => void;
+}) {
   const { t, i18n } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [client, setClient] = useState("");
   const [type, setType] = useState<ReportType>("web_pentest");
@@ -76,14 +75,13 @@ function NewReportDialog({ onCreated }: { onCreated: (id: string) => void }) {
     setLanguage(uiLanguage(i18n.language));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !client.trim()) return;
+  const submit = () => {
+    if (!title.trim() || !client.trim() || createReport.isPending) return;
     createReport.mutate(
       { title: title.trim(), client: client.trim(), report_type: type, language },
       {
         onSuccess: (report) => {
-          setOpen(false);
+          onOpenChange(false);
           reset();
           onCreated(report.id);
         },
@@ -92,23 +90,26 @@ function NewReportDialog({ onCreated }: { onCreated: (id: string) => void }) {
     );
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submit();
+  };
+
+  // Cmd/Ctrl+Enter submits even when focus is on a non-input control.
+  useSubmitShortcut(open, submit);
+
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        setOpen(o);
+        onOpenChange(o);
         if (!o) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button variant="brand">
-          <Plus />
-          {t("reports.new")}
-        </Button>
-      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("reports.newTitle")}</DialogTitle>
+          <DialogDescription>{t("reports.subtitle")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
@@ -149,7 +150,7 @@ function NewReportDialog({ onCreated }: { onCreated: (id: string) => void }) {
           </div>
           <ReportLanguageSelect value={language} onChange={setLanguage} />
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               {t("common.cancel")}
             </Button>
             <Button
@@ -172,15 +173,34 @@ export function ReportsList() {
   const { data: reports, isLoading } = useReports();
   const deleteReport = useDeleteReport();
   const cloneReport = useCloneReport();
-  const lockVault = useLockVault();
   const undoableDelete = useUndoableDelete();
 
   const [pendingDelete, setPendingDelete] = useState<ReportSummary | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("updated");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
-  const requestDelete = (report: ReportSummary, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPendingDelete(report);
-  };
+  // `/` focuses the search box; `n` opens the new-report dialog.
+  useHotkey("/", () => document.getElementById("reports-search")?.focus());
+  useHotkey("n", () => setNewOpen(true));
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...(reports ?? [])]
+      .filter((r) => typeFilter === "all" || r.report_type === typeFilter)
+      .filter((r) => {
+        if (!q) return true;
+        return r.title.toLowerCase().includes(q) || r.client.toLowerCase().includes(q);
+      })
+      .sort((a, b) => {
+        if (sort === "findings") return b.finding_count - a.finding_count;
+        // `created` and `updated` both sort newest-first; the summary only carries
+        // updated_at, so `created` falls back to id (monotonic create order).
+        if (sort === "created") return b.id.localeCompare(a.id);
+        return b.updated_at.localeCompare(a.updated_at);
+      });
+  }, [reports, query, typeFilter, sort]);
 
   const handleDuplicate = (report: ReportSummary, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -191,6 +211,11 @@ export function ReportsList() {
       },
       onError: (err) => toast.error(errorMessage(err, "reports.duplicateError")),
     });
+  };
+
+  const requestDelete = (report: ReportSummary, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPendingDelete(report);
   };
 
   const confirmDelete = () => {
@@ -208,6 +233,8 @@ export function ReportsList() {
     });
   };
 
+  const hasReports = reports && reports.length > 0;
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
       <header className="mb-8 flex items-start justify-between gap-4">
@@ -215,76 +242,68 @@ export function ReportsList() {
           <h1 className="display-xl">{t("reports.title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("reports.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <LanguageToggle />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("kb.title")}
-                onClick={() => navigate("/kb")}
-              >
-                <BookMarked />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("kb.title")}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("settings.title")}
-                onClick={() => navigate("/settings")}
-              >
-                <SettingsIcon />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("settings.title")}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("vault.lock")}
-                onClick={() =>
-                  lockVault.mutate(undefined, {
-                    onSuccess: () => toast.success(t("vault.locked")),
-                  })
-                }
-              >
-                <Lock />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("vault.lock")}</TooltipContent>
-          </Tooltip>
-          <NewReportDialog onCreated={(id) => navigate(`/reports/${id}`)} />
-        </div>
+        <Button variant="brand" onClick={() => setNewOpen(true)}>
+          <Plus />
+          {t("reports.new")}
+        </Button>
       </header>
 
+      {hasReports && (
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative sm:max-w-xs sm:flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="reports-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("reports.searchPlaceholder")}
+              className="pl-9"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
+            <SelectTrigger className="sm:w-44" aria-label={t("reports.fieldType")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("reports.filterAllTypes")}</SelectItem>
+              {REPORT_TYPES.map((rt) => (
+                <SelectItem key={rt} value={rt}>
+                  {t(`reportType.${rt}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+            <SelectTrigger className="sm:w-48" aria-label={t("reports.sortLabel")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="updated">{t("reports.sort.updated")}</SelectItem>
+              <SelectItem value="created">{t("reports.sort.created")}</SelectItem>
+              <SelectItem value="findings">{t("reports.sort.findings")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-      ) : !reports || reports.length === 0 ? (
+        <CardGridSkeleton />
+      ) : !hasReports ? (
         <EmptyState
           icon={FileText}
           title={t("reports.empty.title")}
           body={t("reports.empty.body")}
           ctaLabel={t("reports.empty.cta")}
-          onCta={() => {
-            // Trigger the new-report dialog by focusing — simplest is to scroll
-            // the user to the header button; we rely on the header CTA instead.
-            document
-              .querySelector<HTMLButtonElement>("header button:last-of-type")
-              ?.click();
-          }}
+          onCta={() => setNewOpen(true)}
         />
+      ) : visible.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted-foreground">
+          {t("reports.noMatches")}
+        </p>
       ) : (
         <motion.div layout className="grid gap-4 sm:grid-cols-2">
           <AnimatePresence>
-            {reports.map((r) => (
+            {visible.map((r) => (
               <motion.div
                 key={r.id}
                 layout
@@ -340,6 +359,12 @@ export function ReportsList() {
           </AnimatePresence>
         </motion.div>
       )}
+
+      <NewReportDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        onCreated={(id) => navigate(`/reports/${id}`)}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}
