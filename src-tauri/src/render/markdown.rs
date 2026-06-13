@@ -39,10 +39,24 @@ pub fn to_markdown(doc: &ReportDocument) -> String {
 pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String {
     let mut out = String::new();
 
+    let l = &doc.labels;
+
+    // Confidentiality banner (above the title).
+    if !doc.confidentiality.is_empty() {
+        out.push_str(&format!("> **{}**\n\n", doc.confidentiality.to_uppercase()));
+    }
+
+    // Branding logo (self-contained base64 data-URI) at the top.
+    if doc.has_logo && !doc.logo.as_slice().is_empty() {
+        out.push_str(&format!(
+            "![]({})\n\n",
+            data_uri(&doc.logo_mime, doc.logo.as_slice())
+        ));
+    }
+
     // Title + metadata.
     out.push_str(&format!("# {}\n\n", doc.title));
 
-    let l = &doc.labels;
     let mut meta: Vec<String> = Vec::new();
     if !doc.client.is_empty() {
         meta.push(format!("**{}:** {}", l.client, doc.client));
@@ -55,6 +69,20 @@ pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String 
     }
     if !doc.date.is_empty() {
         meta.push(format!("**{}:** {}", l.date, doc.date));
+    }
+    // Engagement metadata.
+    if !doc.authors.is_empty() {
+        meta.push(format!("**{}:** {}", l.authors, doc.authors.join(", ")));
+    }
+    if !doc.reviewer.is_empty() {
+        meta.push(format!("**{}:** {}", l.reviewer, doc.reviewer));
+    }
+    let period = engagement_period(&doc.engagement_start, &doc.engagement_end);
+    if !period.is_empty() {
+        meta.push(format!("**{}:** {}", l.engagement_period, period));
+    }
+    if !doc.engagement_ref.is_empty() {
+        meta.push(format!("**{}:** {}", l.reference, doc.engagement_ref));
     }
     if !meta.is_empty() {
         out.push_str(&meta.join("  \n"));
@@ -83,10 +111,13 @@ pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String 
         l.total, doc.summary.total
     ));
 
-    if !doc.scope.is_empty() {
+    if !doc.scope.is_empty() || !doc.scope_items.is_empty() {
         out.push_str(&format!("## {}\n\n", l.scope));
-        out.push_str(&doc.scope);
-        out.push_str("\n\n");
+        if !doc.scope.is_empty() {
+            out.push_str(&doc.scope);
+            out.push_str("\n\n");
+        }
+        push_scope_table(&mut out, doc, l);
     }
     if !doc.methodology.is_empty() {
         out.push_str(&format!("## {}\n\n", l.methodology));
@@ -157,6 +188,23 @@ fn push_finding(
     facet(out, l.attack_vector, &f.attack_vector);
     facet(out, l.business_impact, &f.business_impact);
     facet(out, l.technical_details, &f.technical_details);
+
+    // Affected assets (the finding↔asset link set).
+    if !f.affected_assets.is_empty() {
+        out.push_str(&format!("**{}**\n\n", l.affected_assets));
+        for a in &f.affected_assets {
+            let desc = if a.description.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", a.description)
+            };
+            out.push_str(&format!(
+                "- _{}_ `{}`{}\n",
+                a.kind_label, a.identifier, desc
+            ));
+        }
+        out.push('\n');
+    }
 
     // Evidence.
     if f.has_evidence {
@@ -240,6 +288,52 @@ fn md_alt(caption: &str) -> String {
     caption.replace(['[', ']'], "").replace('\n', " ")
 }
 
+/// Format a `data:<mime>;base64,...` URI for the given bytes.
+fn data_uri(mime: &str, data: &[u8]) -> String {
+    format!(
+        "data:{};base64,{}",
+        mime,
+        base64::engine::general_purpose::STANDARD.encode(data)
+    )
+}
+
+/// Combine engagement start/end into a single display string ("" when both
+/// empty, a single date when only one is set, else "start – end").
+fn engagement_period(start: &str, end: &str) -> String {
+    match (start.is_empty(), end.is_empty()) {
+        (true, true) => String::new(),
+        (false, false) => format!("{start} – {end}"),
+        (false, true) => start.to_string(),
+        (true, false) => end.to_string(),
+    }
+}
+
+/// Emit the structured-scope tables (in-scope / out-of-scope) when present.
+fn push_scope_table(out: &mut String, doc: &ReportDocument, l: &Labels) {
+    if doc.scope_items.is_empty() {
+        return;
+    }
+    let mut emit = |heading: &str, in_scope: bool| {
+        let rows: Vec<_> = doc
+            .scope_items
+            .iter()
+            .filter(|s| s.in_scope == in_scope)
+            .collect();
+        if rows.is_empty() {
+            return;
+        }
+        out.push_str(&format!("**{heading}**\n\n"));
+        out.push_str("| Kind | Value | Note |\n| --- | --- | --- |\n");
+        for s in rows {
+            let kind = if s.kind.is_empty() { "—" } else { &s.kind };
+            out.push_str(&format!("| {} | `{}` | {} |\n", kind, s.value, s.note));
+        }
+        out.push('\n');
+    };
+    emit(l.in_scope, true);
+    emit(l.out_of_scope, false);
+}
+
 /// Emit a bold-labelled paragraph only when the body is non-empty.
 fn facet(out: &mut String, label: &str, body: &str) {
     if !body.is_empty() {
@@ -269,7 +363,14 @@ mod tests {
 
     #[test]
     fn markdown_includes_title_summary_table_and_findings() {
-        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let md = to_markdown(&doc);
         assert!(md.starts_with("# Test Report"));
         assert!(md.contains("| Severity | Count |"));
@@ -282,7 +383,14 @@ mod tests {
 
     #[test]
     fn markdown_decodes_cvss_vector_into_metric_list() {
-        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let md = to_markdown(&doc);
         assert!(md.contains("- **Attack vector:** Network"));
         // Raw vector string is replaced by the decoded list.
@@ -290,11 +398,82 @@ mod tests {
     }
 
     #[test]
+    fn markdown_renders_engagement_meta_scope_and_assets() {
+        use crate::models::{Asset, AssetKind, ScopeItem};
+        let mut report = sample_report();
+        report.authors = vec!["Alice".into(), "Bob".into()];
+        report.reviewer = Some("Carol".into());
+        report.engagement_ref = Some("PO-42".into());
+        report.confidentiality = Some("Confidential".into());
+
+        let scope = vec![
+            ScopeItem {
+                id: "s1".into(),
+                report_id: "r1".into(),
+                kind: "url".into(),
+                value: "https://app.example.com".into(),
+                in_scope: true,
+                note: "prod".into(),
+                sort_order: 0,
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted_at: None,
+            },
+            ScopeItem {
+                id: "s2".into(),
+                report_id: "r1".into(),
+                kind: "host".into(),
+                value: "legacy.example.com".into(),
+                in_scope: false,
+                note: String::new(),
+                sort_order: 1,
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted_at: None,
+            },
+        ];
+        let mut fa = HashMap::new();
+        fa.insert(
+            "f1".to_string(),
+            vec![Asset {
+                id: "a1".into(),
+                report_id: "r1".into(),
+                kind: AssetKind::Url,
+                identifier: "https://app.example.com".into(),
+                description: "Main app".into(),
+                sort_order: 0,
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted_at: None,
+            }],
+        );
+        let doc = build_document(
+            &report,
+            vec![sample_finding()],
+            &HashMap::new(),
+            &scope,
+            &fa,
+            None,
+        );
+        let md = to_markdown(&doc);
+        assert!(md.contains("**Authors:** Alice, Bob"));
+        assert!(md.contains("**Reference:** PO-42"));
+        assert!(md.contains("> **CONFIDENTIAL**"));
+        // Scope tables for both in- and out-of-scope.
+        assert!(md.contains("**In scope**"));
+        assert!(md.contains("**Out of scope**"));
+        assert!(md.contains("`legacy.example.com`"));
+        // Affected assets list under the finding.
+        assert!(md.contains("**Affected assets**"));
+        assert!(md.contains("_URL_ `https://app.example.com` — Main app"));
+    }
+
+    #[test]
     fn markdown_omits_empty_optional_sections() {
         let mut report = sample_report();
         report.scope = String::new();
         report.methodology = String::new();
-        let doc = build_document(&report, vec![], &HashMap::new());
+        let doc = build_document(&report, vec![], &HashMap::new(), &[], &HashMap::new(), None);
         let md = to_markdown(&doc);
         assert!(!md.contains("## Scope"));
         assert!(!md.contains("## Methodology"));

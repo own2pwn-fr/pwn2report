@@ -75,12 +75,26 @@ fn e2e_create_render_all_formats() {
 
     // PDF for every shipped theme
     for slug in ["web_pentest", "code_audit", "red_team"] {
-        let doc = build_document(&report, findings.clone(), &images);
+        let doc = build_document(
+            &report,
+            findings.clone(),
+            &images,
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let pdf = PdfRenderer::bundled(slug).render(doc).unwrap();
         assert!(pdf.starts_with(b"%PDF"), "{slug}");
     }
     // MD + HTML
-    let doc = build_document(&report, findings.clone(), &images);
+    let doc = build_document(
+        &report,
+        findings.clone(),
+        &images,
+        &[],
+        &HashMap::new(),
+        None,
+    );
     let md = to_markdown(&doc);
     assert!(md.contains("SQL Injection"));
     let html = to_html(&doc);
@@ -276,4 +290,105 @@ fn e2e_rekey_and_backup() {
 
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(&backup);
+}
+
+/// Aggregate report layer round-trips through sync: assets, scope items, the
+/// finding↔asset link set (UNION), the report logo, and engagement metadata all
+/// cross to a fresh peer; LWW + logo monotonicity hold on a re-merge.
+#[test]
+fn e2e_aggregate_layer_sync_roundtrip() {
+    use crate::models::{AssetPatch, NewAsset, NewScopeItem, ReportPatch};
+
+    let src_path = tmp("agg-src");
+    let mut src = connection::create_encrypted(&src_path, "pp").unwrap();
+    let (rid, fid) = seed_report_with_finding(&src);
+
+    // Engagement metadata + logo on the report.
+    let patch: ReportPatch = serde_json::from_value(json!({
+        "authors": ["Alice", "Bob"], "reviewer": "Carol",
+        "engagement_ref": "PO-42", "confidentiality": "Confidential",
+        "engagement_start": "2026-06-01", "engagement_end": "2026-06-10"
+    }))
+    .unwrap();
+    db::reports::update(&src, &rid, patch).unwrap();
+    db::reports::set_logo(&src, &rid, "image/png", &png_1x1()).unwrap();
+
+    // Two assets, a scope item, and link one asset to the finding.
+    let a1 = db::assets::create(
+        &src,
+        &rid,
+        serde_json::from_value::<NewAsset>(
+            json!({"identifier":"https://app.example.com","kind":"url"}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let _a2 = db::assets::create(
+        &src,
+        &rid,
+        serde_json::from_value::<NewAsset>(json!({"identifier":"10.0.0.5","kind":"ip"})).unwrap(),
+    )
+    .unwrap();
+    db::scope::create(
+        &src,
+        &rid,
+        serde_json::from_value::<NewScopeItem>(
+            json!({"value":"*.example.com","kind":"domain","in_scope":true}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    db::findings::set_finding_assets(&mut src, &fid, std::slice::from_ref(&a1.id)).unwrap();
+    assert_eq!(
+        db::findings::list_finding_assets(&src, &fid).unwrap().len(),
+        1
+    );
+
+    // Snapshot → fresh peer → merge.
+    let bundle = SyncBundle::snapshot(&src).unwrap();
+    let dst_path = tmp("agg-dst");
+    let mut dst = connection::create_encrypted(&dst_path, "other").unwrap();
+    let summary = merge(
+        &mut dst,
+        SyncBundle::from_json(&bundle.to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(summary.assets_added, 2);
+    assert_eq!(summary.scope_added, 1);
+    assert_eq!(summary.links_added, 1);
+    assert_eq!(summary.logos_added, 1);
+
+    // Verify on the peer.
+    let r = db::reports::get(&dst, &rid).unwrap();
+    assert_eq!(r.authors, vec!["Alice", "Bob"]);
+    assert_eq!(r.engagement_ref.as_deref(), Some("PO-42"));
+    assert!(r.has_logo);
+    assert!(db::reports::get_logo(&dst, &rid).unwrap().is_some());
+    assert_eq!(db::assets::list(&dst, &rid).unwrap().len(), 2);
+    assert_eq!(db::scope::list(&dst, &rid).unwrap().len(), 1);
+    assert_eq!(
+        db::findings::list_finding_assets(&dst, &fid).unwrap().len(),
+        1
+    );
+
+    // Update an asset on the peer, then re-merge the (stale) source bundle: LWW
+    // keeps the newer peer edit; the logo stays (monotonic, not re-applied).
+    db::assets::update(
+        &dst,
+        &a1.id,
+        serde_json::from_value::<AssetPatch>(json!({"description":"edited on peer"})).unwrap(),
+    )
+    .unwrap();
+    let s2 = merge(
+        &mut dst,
+        SyncBundle::from_json(&bundle.to_json().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(s2.assets_updated, 0, "stale asset must lose LWW");
+    let a1_dst = db::assets::get(&dst, &a1.id).unwrap();
+    assert_eq!(a1_dst.description, "edited on peer");
+    assert_eq!(s2.logos_added, 0);
+
+    let _ = std::fs::remove_file(&src_path);
+    let _ = std::fs::remove_file(&dst_path);
 }

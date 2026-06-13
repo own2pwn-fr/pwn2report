@@ -107,10 +107,67 @@
 // empty strings / empty arrays.
 // ---------------------------------------------------------------------------
 
-// Centered title page: report-type, title, client, date, status.
-#let title-page(doc) = page(header: none, footer: none, {
+// Engagement-metadata grid for the title page (authors / reviewer / period /
+// reference). Emits only the rows that are set. `labels` is the localized dict.
+// Defined BEFORE `title-page` (which calls it) — Typst resolves identifiers at
+// definition time, so forward references must be avoided.
+#let engagement-meta(doc, labels) = {
+  let rows = ()
+  let row(label, value) = {
+    rows.push(text(size: 9pt, fill: luma(130), label + ":"))
+    rows.push(text(size: 9pt, value))
+  }
+  if "authors" in doc and doc.authors.len() > 0 {
+    row(labels.authors, doc.authors.join(", "))
+  }
+  if "reviewer" in doc and doc.reviewer != "" { row(labels.reviewer, doc.reviewer) }
+  let start = if "engagement_start" in doc { doc.engagement_start } else { "" }
+  let end = if "engagement_end" in doc { doc.engagement_end } else { "" }
+  if start != "" or end != "" {
+    let period = if start != "" and end != "" { start + " – " + end } else { start + end }
+    row(labels.engagement_period, period)
+  }
+  if "engagement_ref" in doc and doc.engagement_ref != "" {
+    row(labels.reference, doc.engagement_ref)
+  }
+  if rows.len() > 0 {
+    v(1.0em)
+    align(center, grid(
+      columns: (auto, auto),
+      column-gutter: 10pt,
+      row-gutter: 4pt,
+      align: (right, left),
+      ..rows,
+    ))
+  }
+}
+
+// Centered title page: optional logo, confidentiality banner, report-type,
+// title, client, date, status, and engagement metadata (authors / reviewer /
+// period / reference). `labels` is the injected localized label dict; all
+// optional fields are robust to "" / empty arrays. Defined to accept `labels`
+// so the metadata rows are localized.
+#let title-page(doc, labels) = page(header: none, footer: none, {
+  // Confidentiality banner, top of page (out of the centered block).
+  if "confidentiality" in doc and doc.confidentiality != "" {
+    set align(center + top)
+    block(
+      fill: severity-color("critical"),
+      inset: (x: 10pt, y: 5pt),
+      radius: 4pt,
+      text(fill: white, weight: "bold", size: 9pt, upper(doc.confidentiality)),
+    )
+  }
+
   set align(center + horizon)
   block({
+    // Branding logo at the very top of the centered block.
+    if "has_logo" in doc and doc.has_logo {
+      block(spacing: 1.2em, box(
+        height: 2.4cm,
+        image(doc.logo, height: 100%, fit: "contain"),
+      ))
+    }
     text(size: 12pt, fill: accent, weight: "bold", upper(doc.report_type))
     v(1.2em)
     text(size: 30pt, weight: "bold", doc.title)
@@ -126,8 +183,47 @@
       v(0.3em)
       text(size: 9pt, fill: luma(150), upper(doc.status))
     }
+    // Engagement metadata: a compact (label, value) grid, only the set rows.
+    engagement-meta(doc, labels)
   })
 })
+
+// Structured scope table: two grouped lists (in-scope / out-of-scope) built
+// from `doc.scope_items` (each `(kind, value, in_scope, note)`). No-ops when
+// there are no scope items. `labels` is the localized dict.
+#let scope-table(items, labels) = {
+  if items == none or items.len() == 0 { return }
+  let make-table(rows, heading) = {
+    if rows.len() == 0 { return }
+    block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, heading))
+    let cells = ()
+    for it in rows {
+      cells.push(if it.kind != "" { it.kind } else { "—" })
+      cells.push(raw(it.value))
+      cells.push(if it.note != "" { it.note } else { "" })
+    }
+    block(spacing: 10pt, table(
+      columns: (auto, 1fr, 1fr),
+      stroke: 0.5pt + luma(220),
+      inset: 6pt,
+      ..cells,
+    ))
+  }
+  make-table(items.filter(it => it.in_scope), labels.in_scope)
+  make-table(items.filter(it => not it.in_scope), labels.out_of_scope)
+}
+
+// A finding's affected-assets list (`f.affected_assets`, each
+// `(kind, kind_label, identifier, description)`). No-ops when empty. `label` is
+// the localized "Affected assets" heading.
+#let affected-assets(f, label) = {
+  if "affected_assets" not in f or f.affected_assets.len() == 0 { return }
+  block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, label))
+  block(spacing: 8pt, list(..f.affected_assets.map(a => {
+    let head = text(size: 9pt, fill: luma(120), "[" + a.kind_label + "] ")
+    head + raw(a.identifier) + (if a.description != "" { " — " + a.description } else { "" })
+  })))
+}
 
 // The per-severity summary table (counts + total). `labels` is the injected
 // localized label dict (`doc.labels`); the total row uses `labels.total`.

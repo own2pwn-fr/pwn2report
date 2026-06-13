@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, BookMarked, Bug, FileUp, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  BookMarked,
+  Bug,
+  FileUp,
+  Image,
+  ListChecks,
+  Plus,
+  Server,
+  Users,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Check, Loader2 } from "lucide-react";
@@ -11,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ReportLanguageSelect } from "@/components/report-language-select";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
@@ -18,6 +29,10 @@ import { FindingCard } from "@/components/findings/finding-card";
 import { FindingForm } from "@/components/findings/finding-form";
 import { KbPicker } from "@/components/findings/kb-picker";
 import { ImportFindingsDialog } from "@/components/findings/import-findings-dialog";
+import { AssetsManager } from "@/components/report/assets-manager";
+import { ScopeManager } from "@/components/report/scope-manager";
+import { EngagementMetadata } from "@/components/report/engagement-metadata";
+import { LogoBranding } from "@/components/report/logo-branding";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useReport, useUpdateReport } from "@/lib/queries/use-reports";
@@ -29,6 +44,9 @@ import {
   useImportFindings,
   useUpdateFinding,
 } from "@/lib/queries/use-findings";
+import { useAssets } from "@/lib/queries/use-assets";
+import { useScopeItems } from "@/lib/queries/use-scope";
+import { useSetFindingAssets } from "@/lib/queries/use-finding-assets";
 import { errorMessage } from "@/lib/ipc";
 import { useDebouncedCallback } from "@/lib/use-debounced-callback";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
@@ -143,12 +161,15 @@ export function ReportDetail() {
 
   const { data: report, isLoading, isError } = useReport(id);
   const { data: findings } = useFindings(id);
+  const { data: assets } = useAssets(id);
+  const { data: scopeItems } = useScopeItems(id);
   const updateReport = useUpdateReport(id ?? "");
   const createFinding = useCreateFinding(id ?? "");
   const updateFinding = useUpdateFinding(id ?? "");
   const deleteFinding = useDeleteFinding(id ?? "");
   const createFromKb = useCreateFindingFromKb(id ?? "");
   const importFindingsM = useImportFindings(id ?? "");
+  const setFindingAssets = useSetFindingAssets();
 
   const undoableDelete = useUndoableDelete();
 
@@ -173,17 +194,31 @@ export function ReportDetail() {
     setFormOpen(true);
   };
 
-  const handleCreate = (input: NewFinding) =>
+  const handleCreate = (input: NewFinding, assetIds: string[]) =>
     createFinding.mutate(input, {
-      onSuccess: () => setFormOpen(false),
+      onSuccess: (created) => {
+        setFormOpen(false);
+        if (assetIds.length > 0) {
+          setFindingAssets.mutate(
+            { findingId: created.id, assetIds },
+            { onError: (err) => toast.error(errorMessage(err)) },
+          );
+        }
+      },
       onError: (err) => toast.error(errorMessage(err, "findings.createError")),
     });
 
-  const handleUpdate = (findingId: string, patch: FindingPatch) =>
+  const handleUpdate = (findingId: string, patch: FindingPatch, assetIds: string[]) =>
     updateFinding.mutate(
       { id: findingId, patch },
       {
-        onSuccess: () => setFormOpen(false),
+        onSuccess: () => {
+          setFormOpen(false);
+          setFindingAssets.mutate(
+            { findingId, assetIds },
+            { onError: (err) => toast.error(errorMessage(err)) },
+          );
+        },
         onError: (err) => toast.error(errorMessage(err)),
       },
     );
@@ -264,46 +299,92 @@ export function ReportDetail() {
         <p className="text-muted-foreground">{report.client}</p>
       </header>
 
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="text-base">{t("report.details")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <ReportLanguageSelect
-            value={report.language}
-            onChange={(language) => commit({ language })}
-            className="max-w-xs"
-          />
-          <DebouncedField
-            label={t("report.execSummary")}
-            value={report.exec_summary}
-            placeholder={t("report.execSummaryPlaceholder")}
-            onCommit={(v) => commit({ exec_summary: v })}
-            rows={4}
-            aiAssist
+      <div className="space-y-4">
+        {/* ── Details ──────────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("report.details")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <ReportLanguageSelect
+              value={report.language}
+              onChange={(language) => commit({ language })}
+              className="max-w-xs"
+            />
+            <DebouncedField
+              label={t("report.execSummary")}
+              value={report.exec_summary}
+              placeholder={t("report.execSummaryPlaceholder")}
+              onCommit={(v) => commit({ exec_summary: v })}
+              rows={4}
+              aiAssist
+              isPending={updateReport.isPending}
+              isSuccess={updateReport.isSuccess}
+            />
+            <DebouncedField
+              label={t("report.scope")}
+              value={report.scope}
+              placeholder={t("report.scopePlaceholder")}
+              onCommit={(v) => commit({ scope: v })}
+              rows={3}
+              isPending={updateReport.isPending}
+              isSuccess={updateReport.isSuccess}
+            />
+            <DebouncedField
+              label={t("report.methodology")}
+              value={report.methodology}
+              placeholder={t("report.methodologyPlaceholder")}
+              onCommit={(v) => commit({ methodology: v })}
+              rows={3}
+              isPending={updateReport.isPending}
+              isSuccess={updateReport.isSuccess}
+            />
+          </CardContent>
+        </Card>
+
+        {/* ── Engagement metadata ──────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t("engagement.title")}
+          icon={Users}
+          defaultOpen={false}
+        >
+          <EngagementMetadata
+            report={report}
+            onCommit={commit}
             isPending={updateReport.isPending}
             isSuccess={updateReport.isSuccess}
           />
-          <DebouncedField
-            label={t("report.scope")}
-            value={report.scope}
-            placeholder={t("report.scopePlaceholder")}
-            onCommit={(v) => commit({ scope: v })}
-            rows={3}
-            isPending={updateReport.isPending}
-            isSuccess={updateReport.isSuccess}
-          />
-          <DebouncedField
-            label={t("report.methodology")}
-            value={report.methodology}
-            placeholder={t("report.methodologyPlaceholder")}
-            onCommit={(v) => commit({ methodology: v })}
-            rows={3}
-            isPending={updateReport.isPending}
-            isSuccess={updateReport.isSuccess}
-          />
-        </CardContent>
-      </Card>
+        </CollapsibleSection>
+
+        {/* ── Structured scope ─────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t("scope.title")}
+          icon={ListChecks}
+          count={scopeItems?.length}
+          defaultOpen={false}
+        >
+          <ScopeManager reportId={report.id} />
+        </CollapsibleSection>
+
+        {/* ── Affected assets ──────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t("assets.title")}
+          icon={Server}
+          count={assets?.length}
+          defaultOpen={false}
+        >
+          <AssetsManager reportId={report.id} />
+        </CollapsibleSection>
+
+        {/* ── Branding / logo ──────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t("branding.title")}
+          icon={Image}
+          defaultOpen={false}
+        >
+          <LogoBranding reportId={report.id} hasLogo={report.has_logo} />
+        </CollapsibleSection>
+      </div>
 
       <Separator className="my-8" />
 

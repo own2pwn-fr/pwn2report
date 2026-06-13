@@ -18,28 +18,46 @@ use crate::state::AppState;
 /// each finding's evidence images, then project). Image bytes are read from the
 /// encrypted vault here so the renderers stay pure.
 fn build_doc(state: &AppState, report_id: &str) -> AppResult<content_model::ReportDocument> {
-    let (report, findings, images) = state.with_conn(|conn| {
-        let report = db::reports::get(conn, report_id)?;
-        let findings = db::findings::list(conn, report_id)?;
+    use crate::models::Asset;
 
-        // For each finding, fetch its ordered images and their raw bytes.
-        let mut images: HashMap<String, Vec<ImageSource>> = HashMap::new();
-        for f in &findings {
-            let metas = db::evidence::list(conn, &f.id)?;
-            if metas.is_empty() {
-                continue;
-            }
-            let mut sources = Vec::with_capacity(metas.len());
-            for m in metas {
-                let (mime, data) = db::evidence::get_data(conn, &m.id)?;
-                sources.push((m.caption, mime, data));
-            }
-            images.insert(f.id.clone(), sources);
-        }
+    let (report, findings, images, scope_items, finding_assets, logo) =
+        state.with_conn(|conn| {
+            let report = db::reports::get(conn, report_id)?;
+            let findings = db::findings::list(conn, report_id)?;
 
-        Ok((report, findings, images))
-    })?;
-    Ok(content_model::build_document(&report, findings, &images))
+            // For each finding, fetch its ordered images and their raw bytes, plus
+            // its affected assets (the resolved finding↔asset link set).
+            let mut images: HashMap<String, Vec<ImageSource>> = HashMap::new();
+            let mut finding_assets: HashMap<String, Vec<Asset>> = HashMap::new();
+            for f in &findings {
+                let metas = db::evidence::list(conn, &f.id)?;
+                if !metas.is_empty() {
+                    let mut sources = Vec::with_capacity(metas.len());
+                    for m in metas {
+                        let (mime, data) = db::evidence::get_data(conn, &m.id)?;
+                        sources.push((m.caption, mime, data));
+                    }
+                    images.insert(f.id.clone(), sources);
+                }
+                let assets = db::findings::list_finding_assets(conn, &f.id)?;
+                if !assets.is_empty() {
+                    finding_assets.insert(f.id.clone(), assets);
+                }
+            }
+
+            let scope_items = db::scope::list(conn, report_id)?;
+            let logo = db::reports::get_logo(conn, report_id)?;
+
+            Ok((report, findings, images, scope_items, finding_assets, logo))
+        })?;
+    Ok(content_model::build_document(
+        &report,
+        findings,
+        &images,
+        &scope_items,
+        &finding_assets,
+        logo.as_ref(),
+    ))
 }
 
 /// Render a report (with its findings) to PDF bytes. Uses the custom Typst

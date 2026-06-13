@@ -40,7 +40,9 @@
     "optional": "facultatif",
     "none": "Aucun",
     "retry": "Réessayer",
-    "error": "Une erreur est survenue"
+    "error": "Une erreur est survenue",
+    "moveUp": "Monter",
+    "moveDown": "Descendre"
   },
   "theme": {
     "toggle": "Changer de thème",
@@ -131,6 +133,71 @@
       "label": "Langue du rapport",
       "hint": "Langue du rapport exporté (titres de sections, etc.). Indépendante de la langue de l'interface."
     }
+  },
+  "engagement": {
+    "title": "Métadonnées de la mission",
+    "authors": "Auteurs",
+    "authorPlaceholder": "ex. Jeanne Dupont",
+    "addAuthor": "Ajouter un auteur",
+    "reviewer": "Relecteur",
+    "reviewerPlaceholder": "ex. Jean Martin",
+    "ref": "Référence de la mission",
+    "refPlaceholder": "ex. ENG-2026-014",
+    "start": "Date de début",
+    "end": "Date de fin",
+    "confidentiality": "Confidentialité",
+    "confidentialityPlaceholder": "ex. Confidentiel — Client uniquement"
+  },
+  "scope": {
+    "title": "Périmètre",
+    "hint": "Définissez ce qui est dans et hors du périmètre de cette mission.",
+    "empty": "Aucun élément de périmètre. Ajoutez une cible incluse ou exclue.",
+    "inScope": "Inclus",
+    "outOfScope": "Exclu",
+    "kind": "Type",
+    "kindPlaceholder": "ex. URL, plage IP",
+    "value": "Cible",
+    "valuePlaceholder": "ex. https://app.example.com",
+    "note": "Note",
+    "notePlaceholder": "Note facultative…",
+    "addInScope": "Ajouter (inclus)",
+    "addOutOfScope": "Ajouter (exclu)",
+    "deleteTitle": "Supprimer l'élément ?",
+    "deleteConfirm": "Supprimer cet élément de périmètre ? Cette action est irréversible."
+  },
+  "assets": {
+    "title": "Actifs concernés",
+    "hint": "Inventaire des hôtes, IP, URL et autres actifs de cette mission. Les vulnérabilités peuvent y faire référence.",
+    "empty": "Aucun actif. Ajoutez les hôtes, IP ou URL du périmètre.",
+    "add": "Ajouter un actif",
+    "identifier": "Identifiant",
+    "identifierPlaceholder": "ex. app.example.com",
+    "description": "Description",
+    "descriptionPlaceholder": "Description facultative…",
+    "deleteTitle": "Supprimer l'actif ?",
+    "deleteConfirm": "Supprimer cet actif ? Cette action est irréversible.",
+    "kind": {
+      "host": "Hôte",
+      "ip": "IP",
+      "url": "URL",
+      "domain": "Domaine",
+      "credential": "Identifiant",
+      "other": "Autre"
+    }
+  },
+  "branding": {
+    "title": "Personnalisation",
+    "hint": "Téléversez un logo qui apparaîtra sur la page de garde du rapport exporté.",
+    "upload": "Téléverser un logo",
+    "replace": "Remplacer le logo",
+    "clear": "Retirer le logo",
+    "uploaded": "Logo téléversé.",
+    "uploadError": "Impossible de téléverser le logo.",
+    "clearError": "Impossible de retirer le logo.",
+    "clearTitle": "Retirer le logo ?",
+    "clearConfirm": "Retirer le logo de ce rapport ?",
+    "filterImages": "Images",
+    "previewAlt": "Aperçu du logo du rapport"
   },
   "findings": {
     "title": "Vulnérabilités",
@@ -233,7 +300,12 @@
     "fieldRefs": "Références",
     "fieldRefPlaceholder": "https://…",
     "fieldTags": "Étiquettes",
-    "fieldTagPlaceholder": "ex. authentification"
+    "fieldTagPlaceholder": "ex. authentification",
+    "affectedAssets": "Actifs concernés",
+    "affectedAssetsPlaceholder": "Sélectionner les actifs concernés…",
+    "affectedAssetsCount_one": "{{count}} actif sélectionné",
+    "affectedAssetsCount_other": "{{count}} actifs sélectionnés",
+    "affectedAssetsEmpty": "Aucun actif défini pour ce rapport. Ajoutez des actifs dans la section Actifs concernés du rapport."
   },
   "evidence": {
     "section": "Captures de preuve",

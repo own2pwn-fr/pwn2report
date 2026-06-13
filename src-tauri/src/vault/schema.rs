@@ -29,7 +29,7 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Current schema version. Bump when adding a migration step (see module docs).
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 /// A single idempotent migration step.
 type MigrationStep = fn(&Connection) -> AppResult<()>;
@@ -42,6 +42,7 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
     (3, migrate_v3),
     (4, migrate_v4),
     (5, migrate_v5),
+    (6, migrate_v6),
 ];
 
 /// Apply any pending migrations and stamp the schema version.
@@ -50,7 +51,7 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
 /// a no-op. Otherwise every step with `version > current` runs in order inside a
 /// single transaction, then `user_version` + the `meta` mirror are bumped.
 ///
-/// Fresh installs (user_version 0) run the whole v1..=v5 ladder; existing v1..v4
+/// Fresh installs (user_version 0) run the whole v1..=v6 ladder; existing v1..v5
 /// vaults run only the steps they are missing.
 pub fn init(conn: &Connection) -> AppResult<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -230,6 +231,81 @@ fn migrate_v5(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// v6: aggregate report layer. Adds:
+///   - `assets`: affected-asset inventory per report (host/ip/url/…).
+///   - `scope_items`: structured in-/out-of-scope entries per report.
+///   - `finding_assets`: link table relating findings to assets (a derived set,
+///     so no soft-delete column — it is fully snapshot/UNION-merged by sync).
+///   - engagement-metadata columns on `reports` (dates, authors, reviewer,
+///     reference, confidentiality) + a per-report branding `logo` BLOB.
+///
+/// Tables follow the soft-delete/tombstone pattern (`deleted_at`) like the other
+/// syncable tables. `CREATE TABLE IF NOT EXISTS` + `column_exists`-guarded
+/// `ADD COLUMN` keep the step idempotent.
+fn migrate_v6(conn: &Connection) -> AppResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS assets (
+            id          TEXT PRIMARY KEY,
+            report_id   TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+            kind        TEXT NOT NULL DEFAULT 'other',
+            identifier  TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            deleted_at  TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_assets_report
+            ON assets(report_id, sort_order);
+
+        CREATE TABLE IF NOT EXISTS scope_items (
+            id          TEXT PRIMARY KEY,
+            report_id   TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+            kind        TEXT NOT NULL DEFAULT 'other',
+            value       TEXT NOT NULL DEFAULT '',
+            in_scope    INTEGER NOT NULL DEFAULT 1,
+            note        TEXT NOT NULL DEFAULT '',
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            deleted_at  TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scope_items_report
+            ON scope_items(report_id, sort_order);
+
+        CREATE TABLE IF NOT EXISTS finding_assets (
+            finding_id  TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+            asset_id    TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+            PRIMARY KEY (finding_id, asset_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_finding_assets_asset
+            ON finding_assets(asset_id);
+        "#,
+    )?;
+
+    // Engagement metadata + branding columns on `reports` (idempotent).
+    let columns: &[(&str, &str)] = &[
+        ("engagement_start", "TEXT"),
+        ("engagement_end", "TEXT"),
+        ("authors", "TEXT NOT NULL DEFAULT '[]'"),
+        ("reviewer", "TEXT"),
+        ("engagement_ref", "TEXT"),
+        ("confidentiality", "TEXT"),
+        ("logo", "BLOB"),
+        ("logo_mime", "TEXT"),
+    ];
+    for (name, ty) in columns {
+        if !column_exists(conn, "reports", name)? {
+            conn.execute_batch(&format!("ALTER TABLE reports ADD COLUMN {name} {ty};"))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,5 +397,82 @@ mod tests {
             })
             .unwrap();
         assert_eq!(lang, "en");
+    }
+
+    /// A fresh DB has the v6 aggregate-layer tables + the new engagement /
+    /// branding columns on `reports`.
+    #[test]
+    fn fresh_db_has_v6_tables_and_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        for table in ["assets", "scope_items", "finding_assets"] {
+            let n: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1, "{table} table missing");
+        }
+        for col in [
+            "engagement_start",
+            "engagement_end",
+            "authors",
+            "reviewer",
+            "engagement_ref",
+            "confidentiality",
+            "logo",
+            "logo_mime",
+        ] {
+            assert!(column_exists(&conn, "reports", col).unwrap(), "{col}");
+        }
+        // `authors` defaults to an empty JSON array for a fresh row.
+        conn.execute(
+            "INSERT INTO reports (id, title, report_type, created_at, updated_at) \
+             VALUES ('r3', 't', 'web_pentest', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let authors: String = conn
+            .query_row("SELECT authors FROM reports WHERE id = 'r3'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(authors, "[]");
+    }
+
+    /// Upgrading a v5 vault to current adds the v6 tables + columns without
+    /// dropping existing report data.
+    #[test]
+    fn upgrade_from_v5_adds_v6_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate_v1(&conn).unwrap();
+        migrate_v2(&conn).unwrap();
+        migrate_v3(&conn).unwrap();
+        migrate_v4(&conn).unwrap();
+        migrate_v5(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 5i64).unwrap();
+        conn.execute(
+            "INSERT INTO reports (id, title, report_type, created_at, updated_at) \
+             VALUES ('r1', 't', 'web_pentest', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        assert!(!column_exists(&conn, "reports", "authors").unwrap());
+
+        init(&conn).unwrap();
+
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, SCHEMA_VERSION);
+        assert!(column_exists(&conn, "reports", "authors").unwrap());
+        let authors: String = conn
+            .query_row("SELECT authors FROM reports WHERE id = 'r1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(authors, "[]");
     }
 }

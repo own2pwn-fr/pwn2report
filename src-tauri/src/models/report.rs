@@ -64,6 +64,33 @@ pub struct Report {
     /// (e.g. `"en"`, `"fr"`). Defaults to `"en"`. Exposed to the frontend.
     #[serde(default = "default_language")]
     pub language: String,
+    // --- engagement metadata (aggregate report layer, schema v6) ------------
+    /// Engagement start date (free-form / ISO string). `None` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engagement_start: Option<String>,
+    /// Engagement end date. `None` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engagement_end: Option<String>,
+    /// Report authors (assessors). Stored as a JSON array of strings; defaults
+    /// to an empty list.
+    #[serde(default)]
+    pub authors: Vec<String>,
+    /// Quality reviewer / approver name. `None` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewer: Option<String>,
+    /// Client/internal engagement reference (PO number, ticket, …). `None` when
+    /// unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engagement_ref: Option<String>,
+    /// Confidentiality classification banner ("Confidential", "TLP:RED", …).
+    /// `None` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidentiality: Option<String>,
+    /// Whether a per-report branding logo is stored. The logo BLOB itself is
+    /// NEVER carried on this serde payload (fetched via the dedicated
+    /// `get_report_logo` command); only this presence flag crosses IPC.
+    #[serde(default)]
+    pub has_logo: bool,
     pub created_at: String,
     pub updated_at: String,
     /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
@@ -116,4 +143,19 @@ pub struct ReportPatch {
     pub methodology: Option<String>,
     #[serde(default)]
     pub language: Option<String>,
+    // --- engagement metadata (aggregate report layer) -----------------------
+    /// Nullable: a JSON `null` clears the value; an omitted field leaves it.
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub engagement_start: Option<Option<String>>,
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub engagement_end: Option<Option<String>>,
+    /// Authors replace the whole list when present (no per-element patching).
+    #[serde(default)]
+    pub authors: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub reviewer: Option<Option<String>>,
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub engagement_ref: Option<Option<String>>,
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub confidentiality: Option<Option<String>>,
 }

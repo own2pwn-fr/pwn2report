@@ -40,7 +40,9 @@
     "optional": "optional",
     "none": "None",
     "retry": "Retry",
-    "error": "Something went wrong"
+    "error": "Something went wrong",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
   },
   "theme": {
     "toggle": "Toggle theme",
@@ -131,6 +133,71 @@
       "label": "Report language",
       "hint": "Language of the exported report (section titles etc.). Independent of the app interface language."
     }
+  },
+  "engagement": {
+    "title": "Engagement metadata",
+    "authors": "Authors",
+    "authorPlaceholder": "e.g. Jane Doe",
+    "addAuthor": "Add author",
+    "reviewer": "Reviewer",
+    "reviewerPlaceholder": "e.g. John Smith",
+    "ref": "Engagement reference",
+    "refPlaceholder": "e.g. ENG-2026-014",
+    "start": "Start date",
+    "end": "End date",
+    "confidentiality": "Confidentiality",
+    "confidentialityPlaceholder": "e.g. Confidential — Client Only"
+  },
+  "scope": {
+    "title": "Scope",
+    "hint": "Define what is in and out of scope for this engagement.",
+    "empty": "No scope items yet. Add an in-scope or out-of-scope target.",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "kind": "Type",
+    "kindPlaceholder": "e.g. URL, IP range",
+    "value": "Target",
+    "valuePlaceholder": "e.g. https://app.example.com",
+    "note": "Note",
+    "notePlaceholder": "Optional note…",
+    "addInScope": "Add in-scope",
+    "addOutOfScope": "Add out-of-scope",
+    "deleteTitle": "Delete scope item?",
+    "deleteConfirm": "Delete this scope item? This cannot be undone."
+  },
+  "assets": {
+    "title": "Affected assets",
+    "hint": "Inventory of hosts, IPs, URLs and other assets in this engagement. Findings can reference these.",
+    "empty": "No assets yet. Add the hosts, IPs or URLs in scope.",
+    "add": "Add asset",
+    "identifier": "Identifier",
+    "identifierPlaceholder": "e.g. app.example.com",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional description…",
+    "deleteTitle": "Delete asset?",
+    "deleteConfirm": "Delete this asset? This cannot be undone.",
+    "kind": {
+      "host": "Host",
+      "ip": "IP",
+      "url": "URL",
+      "domain": "Domain",
+      "credential": "Credential",
+      "other": "Other"
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "hint": "Upload a logo to display on the exported report's cover page.",
+    "upload": "Upload logo",
+    "replace": "Replace logo",
+    "clear": "Remove logo",
+    "uploaded": "Logo uploaded.",
+    "uploadError": "Could not upload the logo.",
+    "clearError": "Could not remove the logo.",
+    "clearTitle": "Remove logo?",
+    "clearConfirm": "Remove the branding logo from this report?",
+    "filterImages": "Images",
+    "previewAlt": "Report logo preview"
   },
   "findings": {
     "title": "Findings",
@@ -233,7 +300,12 @@
     "fieldRefs": "References",
     "fieldRefPlaceholder": "https://…",
     "fieldTags": "Tags",
-    "fieldTagPlaceholder": "e.g. authentication"
+    "fieldTagPlaceholder": "e.g. authentication",
+    "affectedAssets": "Affected assets",
+    "affectedAssetsPlaceholder": "Select affected assets…",
+    "affectedAssetsCount_one": "{{count}} asset selected",
+    "affectedAssetsCount_other": "{{count}} assets selected",
+    "affectedAssetsEmpty": "No assets defined for this report yet. Add assets in the report's Affected assets section."
   },
   "evidence": {
     "section": "Evidence images",

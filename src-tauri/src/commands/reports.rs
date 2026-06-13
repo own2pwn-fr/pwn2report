@@ -35,3 +35,33 @@ pub fn update_report(
 pub fn delete_report(state: State<'_, AppState>, id: String) -> AppResult<()> {
     state.with_conn(|conn| db::reports::delete(conn, &id))
 }
+
+/// Set (or replace) a report's branding logo. `data` is the raw image bytes,
+/// `mime` its content type ("image/png", …).
+#[tauri::command]
+pub fn set_report_logo(
+    state: State<'_, AppState>,
+    report_id: String,
+    mime: String,
+    data: Vec<u8>,
+) -> AppResult<()> {
+    state.with_conn(|conn| db::reports::set_logo(conn, &report_id, &mime, &data))
+}
+
+/// Return a report's logo bytes, or an empty vec when no logo is set. (The MIME
+/// is exposed via the report's `has_logo` flag + a separate fetch if needed; the
+/// frontend builds an object URL from these bytes.)
+#[tauri::command]
+pub fn get_report_logo(state: State<'_, AppState>, report_id: String) -> AppResult<Vec<u8>> {
+    state.with_conn(|conn| {
+        Ok(db::reports::get_logo(conn, &report_id)?
+            .map(|(_mime, data)| data)
+            .unwrap_or_default())
+    })
+}
+
+/// Clear a report's branding logo.
+#[tauri::command]
+pub fn clear_report_logo(state: State<'_, AppState>, report_id: String) -> AppResult<()> {
+    state.with_conn(|conn| db::reports::clear_logo(conn, &report_id))
+}

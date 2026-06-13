@@ -19,16 +19,28 @@
 //! tombstone is monotonic — once set it stays set (a live incoming copy never
 //! un-deletes a locally-tombstoned image).
 //!
-//! Ordering matters for foreign keys: **reports → findings → kb_entries →
-//! evidence_images**. The whole merge runs in a single transaction so a failure
-//! leaves the vault untouched.
+//! **Finding↔asset links** are a derived set, not a versioned row, so they are
+//! UNION-merged: every incoming link whose endpoints both exist locally is
+//! inserted if missing. Consequently link *removals do NOT propagate* — once two
+//! devices have seen a link it stays until manually re-set on each device. This
+//! is a deliberate, documented limitation (a derived set with no tombstones).
+//!
+//! **Report logos** are merged monotonically: an incoming logo is applied only
+//! when the local report has no logo yet (sync never clears or overwrites a logo
+//! — the LWW report row governs the rest of the report's fields).
+//!
+//! Ordering matters for foreign keys: **reports → assets/scope_items → findings
+//! → finding_assets/logos → kb_entries → evidence_images**. The whole merge runs
+//! in a single transaction so a failure leaves the vault untouched.
 
+use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine;
 use rusqlite::Connection;
 use serde::Serialize;
 
 use super::bundle::SyncBundle;
 use crate::db;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// Outcome of a merge, returned to the frontend.
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
@@ -40,6 +52,14 @@ pub struct SyncSummary {
     pub kb_added: usize,
     pub kb_updated: usize,
     pub images_added: usize,
+    pub assets_added: usize,
+    pub assets_updated: usize,
+    pub scope_added: usize,
+    pub scope_updated: usize,
+    /// Finding↔asset links inserted by the UNION merge (new links only).
+    pub links_added: usize,
+    /// Report logos applied (only where the local report had none).
+    pub logos_added: usize,
     /// Incoming tombstones that won LWW and soft-deleted a local row (across all
     /// tables). A subset of the "updated" work, surfaced separately so the UI can
     /// report "N items removed by sync".
@@ -95,6 +115,54 @@ pub fn merge(conn: &mut Connection, bundle: SyncBundle) -> AppResult<SyncSummary
         }
     }
 
+    // 1b. Assets (children of reports; parents of finding_asset links). LWW like
+    //     reports/findings — tombstones travel via update_raw's deleted_at.
+    for a in &bundle.assets {
+        if db::assets::exists(c, &a.id)? {
+            let local = db::assets::get_raw(c, &a.id)?;
+            if incoming_is_newer(&a.updated_at, &local.updated_at) {
+                db::assets::update_raw(c, a)?;
+                summary.assets_updated += 1;
+                if local.deleted_at.is_none() && a.deleted_at.is_some() {
+                    summary.deleted += 1;
+                }
+            } else {
+                summary.skipped += 1;
+            }
+        } else {
+            // FK guard: skip an asset whose parent report is absent.
+            if !db::reports::exists(c, &a.report_id)? {
+                summary.skipped += 1;
+                continue;
+            }
+            db::assets::insert_raw(c, a)?;
+            summary.assets_added += 1;
+        }
+    }
+
+    // 1c. Scope items (children of reports). LWW + tombstones.
+    for s in &bundle.scope_items {
+        if db::scope::exists(c, &s.id)? {
+            let local = db::scope::get_raw(c, &s.id)?;
+            if incoming_is_newer(&s.updated_at, &local.updated_at) {
+                db::scope::update_raw(c, s)?;
+                summary.scope_updated += 1;
+                if local.deleted_at.is_none() && s.deleted_at.is_some() {
+                    summary.deleted += 1;
+                }
+            } else {
+                summary.skipped += 1;
+            }
+        } else {
+            if !db::reports::exists(c, &s.report_id)? {
+                summary.skipped += 1;
+                continue;
+            }
+            db::scope::insert_raw(c, s)?;
+            summary.scope_added += 1;
+        }
+    }
+
     // 2. Findings (parents of evidence images; require their report present).
     for f in &bundle.findings {
         if db::findings::exists(c, &f.id)? {
@@ -119,6 +187,40 @@ pub fn merge(conn: &mut Connection, bundle: SyncBundle) -> AppResult<SyncSummary
             db::findings::insert_raw(c, f)?;
             summary.findings_added += 1;
         }
+    }
+
+    // 2b. Finding↔asset links (UNION). Insert each incoming link whose BOTH
+    //     endpoints now exist locally (findings + assets are already merged).
+    //     Link removals do NOT propagate — a derived set with no tombstones.
+    for link in &bundle.finding_asset_links {
+        if !db::findings::exists(c, &link.finding_id)? || !db::assets::exists(c, &link.asset_id)? {
+            summary.skipped += 1;
+            continue;
+        }
+        if db::findings::link_finding_asset(c, &link.finding_id, &link.asset_id)? {
+            summary.links_added += 1;
+        } else {
+            summary.skipped += 1;
+        }
+    }
+
+    // 2c. Report logos (monotonic): apply only when the report exists and has no
+    //     logo yet. Sync never overwrites or clears a logo.
+    for logo in &bundle.report_logos {
+        if !db::reports::exists(c, &logo.report_id)? {
+            summary.skipped += 1;
+            continue;
+        }
+        // Already has a logo? leave it.
+        if db::reports::get_logo(c, &logo.report_id)?.is_some() {
+            summary.skipped += 1;
+            continue;
+        }
+        let data = B64.decode(logo.data_base64.as_bytes()).map_err(|e| {
+            AppError::Sync(format!("report {} logo: bad base64: {e}", logo.report_id))
+        })?;
+        db::reports::set_logo_raw(c, &logo.report_id, Some(&logo.mime), Some(&data))?;
+        summary.logos_added += 1;
     }
 
     // 3. KB entries (no FKs).

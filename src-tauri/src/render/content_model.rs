@@ -14,7 +14,7 @@ use derive_typst_intoval::{IntoDict, IntoValue};
 // scope: the derived `into_dict`/`into_value` call `field.into_value()`.
 use typst::foundations::{Bytes, Dict, IntoValue as _};
 
-use crate::models::{Finding, Report, ReportType, Severity};
+use crate::models::{Asset, AssetKind, Finding, Report, ReportType, ScopeItem, Severity};
 use crate::render::cvss;
 use crate::render::labels::Labels;
 use crate::render::markup::md_to_typst;
@@ -47,10 +47,49 @@ pub struct ReportDocument {
     pub exec_summary: String,
     pub scope: String,
     pub methodology: String,
+    // --- engagement metadata (title page) -----------------------------------
+    /// Authors / assessors (may be empty).
+    pub authors: Vec<String>,
+    pub reviewer: String,
+    pub engagement_start: String,
+    pub engagement_end: String,
+    pub engagement_ref: String,
+    pub confidentiality: String,
+    // --- branding logo ------------------------------------------------------
+    /// `true` when a logo is present; renderers gate the logo block on this.
+    pub has_logo: bool,
+    /// Logo MIME type ("" when absent).
+    pub logo_mime: String,
+    /// Logo bytes (empty when absent). `Bytes` so the Typst path can feed it to
+    /// `image(..)`; other renderers read `.as_slice()` for data-URI embedding.
+    pub logo: Bytes,
+    // --- structured scope ---------------------------------------------------
+    /// Structured scope rows (in- and out-of-scope), in author order.
+    pub scope_items: Vec<ScopeRowInput>,
     /// Per-severity counts for the summary table.
     pub summary: SeveritySummary,
     /// Findings, already sorted (severity desc, then sort_order).
     pub findings: Vec<FindingInput>,
+}
+
+/// A single structured scope row, flattened for the renderers. `in_scope` drives
+/// which table (in/out) the renderer places it in.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct ScopeRowInput {
+    pub kind: String,
+    pub value: String,
+    pub in_scope: bool,
+    pub note: String,
+}
+
+/// A single affected asset, flattened for the renderers. `kind_label` is the
+/// localized asset-kind name; `kind` is the raw slug.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct AssetInput {
+    pub kind: String,
+    pub kind_label: String,
+    pub identifier: String,
+    pub description: String,
 }
 
 /// Required by `compile_with_input` (input must be `impl Into<Dict>`).
@@ -113,6 +152,8 @@ pub struct FindingInput {
     pub poc_payload: String,
     // evidence images (screenshots / diagrams)
     pub images: Vec<FindingImage>,
+    // affected assets (the finding↔asset link set, resolved to live assets)
+    pub affected_assets: Vec<AssetInput>,
     // misc
     pub refs: Vec<String>,
     pub tags: Vec<String>,
@@ -174,6 +215,17 @@ pub struct TypstReportInput {
     pub scope: String,
     /// Prose → Typst markup.
     pub methodology: String,
+    // engagement metadata + branding — copied verbatim from the raw IR.
+    pub authors: Vec<String>,
+    pub reviewer: String,
+    pub engagement_start: String,
+    pub engagement_end: String,
+    pub engagement_ref: String,
+    pub confidentiality: String,
+    pub has_logo: bool,
+    pub logo_mime: String,
+    pub logo: Bytes,
+    pub scope_items: Vec<ScopeRowInput>,
     pub summary: SeveritySummary,
     pub findings: Vec<TypstFindingInput>,
 }
@@ -225,6 +277,8 @@ pub struct TypstFindingInput {
     pub poc_payload: String,
     // evidence images
     pub images: Vec<FindingImage>,
+    // affected assets — copied verbatim from the raw IR.
+    pub affected_assets: Vec<AssetInput>,
     // misc
     pub refs: Vec<String>,
     pub tags: Vec<String>,
@@ -246,6 +300,16 @@ impl TypstReportInput {
             exec_summary: md_to_typst(&doc.exec_summary),
             scope: md_to_typst(&doc.scope),
             methodology: md_to_typst(&doc.methodology),
+            authors: doc.authors.clone(),
+            reviewer: doc.reviewer.clone(),
+            engagement_start: doc.engagement_start.clone(),
+            engagement_end: doc.engagement_end.clone(),
+            engagement_ref: doc.engagement_ref.clone(),
+            confidentiality: doc.confidentiality.clone(),
+            has_logo: doc.has_logo,
+            logo_mime: doc.logo_mime.clone(),
+            logo: doc.logo.clone(),
+            scope_items: doc.scope_items.clone(),
             summary: doc.summary.clone(),
             findings: doc
                 .findings
@@ -289,6 +353,7 @@ impl TypstFindingInput {
             poc_steps: f.poc_steps.clone(),
             poc_payload: f.poc_payload.clone(),
             images: f.images.clone(),
+            affected_assets: f.affected_assets.clone(),
             refs: f.refs.clone(),
             tags: f.tags.clone(),
         }
@@ -305,11 +370,38 @@ fn report_type_label(t: ReportType, labels: &Labels) -> &'static str {
     }
 }
 
+/// The localized human-readable asset-kind label.
+fn asset_kind_label(kind: AssetKind, labels: &Labels) -> &'static str {
+    match kind {
+        AssetKind::Host => labels.asset_host,
+        AssetKind::Ip => labels.asset_ip,
+        AssetKind::Url => labels.asset_url,
+        AssetKind::Domain => labels.asset_domain,
+        AssetKind::Credential => labels.asset_credential,
+        AssetKind::Other => labels.asset_other,
+    }
+}
+
+/// Project a DB `Asset` into the renderer-friendly [`AssetInput`].
+fn asset_to_input(a: &Asset, labels: &Labels) -> AssetInput {
+    AssetInput {
+        kind: a.kind.as_str().to_string(),
+        kind_label: asset_kind_label(a.kind, labels).to_string(),
+        identifier: a.identifier.clone(),
+        description: a.description.clone(),
+    }
+}
+
 impl FindingInput {
     /// Project a DB `Finding` (plus its evidence images) into the
     /// template-friendly shape. `images` is the `(caption, mime, bytes)` list
     /// for this finding, already ordered; an empty slice yields no images.
-    fn from_finding(f: &Finding, images: &[ImageSource], labels: &Labels) -> Self {
+    fn from_finding(
+        f: &Finding,
+        images: &[ImageSource],
+        assets: &[Asset],
+        labels: &Labels,
+    ) -> Self {
         let evidence = f.evidence.as_ref();
         let evidence_lines = evidence
             .map(|e| match (e.start_line, e.end_line) {
@@ -367,6 +459,7 @@ impl FindingInput {
                     data: Bytes::new(data.clone()),
                 })
                 .collect(),
+            affected_assets: assets.iter().map(|a| asset_to_input(a, labels)).collect(),
             refs: f.refs.clone(),
             tags: f.tags.clone(),
         }
@@ -381,12 +474,18 @@ impl FindingInput {
 /// `updated_at` truncated to the date portion (falls back to the full string).
 ///
 /// `images` maps a finding id to its ordered `(caption, mime, bytes)` list;
-/// findings absent from the map render with no images. This function stays pure
-/// (no DB) — the command/export layer fetches the bytes and builds the map.
+/// findings absent from the map render with no images. `scope_items` are the
+/// report's structured scope rows (in author order); `finding_assets` maps a
+/// finding id to its ordered affected assets; `logo` is the report's branding
+/// logo as `(mime, bytes)` when present. This function stays pure (no DB) — the
+/// command/export layer fetches the bytes and builds the maps.
 pub fn build_document(
     report: &Report,
     mut findings: Vec<Finding>,
     images: &HashMap<String, Vec<ImageSource>>,
+    scope_items: &[ScopeItem],
+    finding_assets: &HashMap<String, Vec<Asset>>,
+    logo: Option<&(String, Vec<u8>)>,
 ) -> ReportDocument {
     findings.sort_by(|a, b| {
         b.severity
@@ -416,6 +515,25 @@ pub fn build_document(
 
     let labels = Labels::for_lang(&report.language);
 
+    let engagement_start = report.engagement_start.clone().unwrap_or_default();
+    let engagement_end = report.engagement_end.clone().unwrap_or_default();
+
+    let (logo_mime, logo_bytes) = match logo {
+        Some((mime, data)) if !data.is_empty() => (mime.clone(), Bytes::new(data.clone())),
+        _ => (String::new(), Bytes::new(Vec::new())),
+    };
+    let has_logo = !logo_mime.is_empty();
+
+    let scope_rows: Vec<ScopeRowInput> = scope_items
+        .iter()
+        .map(|s| ScopeRowInput {
+            kind: s.kind.clone(),
+            value: s.value.clone(),
+            in_scope: s.in_scope,
+            note: s.note.clone(),
+        })
+        .collect();
+
     ReportDocument {
         title: report.title.clone(),
         client: report.client.clone(),
@@ -428,12 +546,23 @@ pub fn build_document(
         exec_summary: report.exec_summary.clone(),
         scope: report.scope.clone(),
         methodology: report.methodology.clone(),
+        authors: report.authors.clone(),
+        reviewer: report.reviewer.clone().unwrap_or_default(),
+        engagement_start,
+        engagement_end,
+        engagement_ref: report.engagement_ref.clone().unwrap_or_default(),
+        confidentiality: report.confidentiality.clone().unwrap_or_default(),
+        has_logo,
+        logo_mime,
+        logo: logo_bytes,
+        scope_items: scope_rows,
         summary,
         findings: findings
             .iter()
             .map(|f| {
                 let imgs = images.get(&f.id).map(Vec::as_slice).unwrap_or(&[]);
-                FindingInput::from_finding(f, imgs, &labels)
+                let assets = finding_assets.get(&f.id).map(Vec::as_slice).unwrap_or(&[]);
+                FindingInput::from_finding(f, imgs, assets, &labels)
             })
             .collect(),
     }

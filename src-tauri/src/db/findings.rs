@@ -7,7 +7,7 @@ use uuid::Uuid;
 use super::now_rfc3339;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Confidence, Evidence, Finding, FindingDescription, FindingKind, FindingPatch,
+    Asset, AssetKind, Confidence, Evidence, Finding, FindingDescription, FindingKind, FindingPatch,
     FindingRemediation, NewFinding, Severity, StructuredPoc, TriageStatus,
 };
 
@@ -602,4 +602,124 @@ pub fn reorder(conn: &mut Connection, report_id: &str, ordered_ids: &[String]) -
     }
     tx.commit()?;
     Ok(())
+}
+
+// --- finding ↔ asset link set ----------------------------------------------
+//
+// `finding_assets` is a DERIVED set (which assets a finding affects), not a
+// versioned entity, so it has no soft-delete column. It is replaced wholesale by
+// [`set_finding_assets`]; sync UNIONs the incoming links (link *removals* do not
+// propagate — a documented limitation, see `sync::merge`).
+
+/// Replace a finding's affected-asset link set with exactly `asset_ids`. Only
+/// ids that reference assets belonging to the finding's report are linked
+/// (cross-report or unknown ids are silently ignored) so the FK always holds.
+/// Returns the number of links written. Runs in a transaction.
+pub fn set_finding_assets(
+    conn: &mut Connection,
+    finding_id: &str,
+    asset_ids: &[String],
+) -> AppResult<usize> {
+    // Resolve the finding's report so we can constrain links to same-report
+    // assets (and yield a clean NotFound if the finding is absent).
+    let report_id: Option<String> = conn
+        .query_row(
+            "SELECT report_id FROM findings WHERE id = ?1 AND deleted_at IS NULL",
+            params![finding_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let report_id = report_id.ok_or(AppError::NotFound)?;
+
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM finding_assets WHERE finding_id = ?1",
+        params![finding_id],
+    )?;
+    let mut written = 0usize;
+    for aid in asset_ids {
+        // INSERT only when the asset exists, is live, and belongs to the same
+        // report. OR IGNORE de-dups repeated ids in the input.
+        let n = tx.execute(
+            "INSERT OR IGNORE INTO finding_assets (finding_id, asset_id) \
+             SELECT ?1, a.id FROM assets a \
+             WHERE a.id = ?2 AND a.report_id = ?3 AND a.deleted_at IS NULL",
+            params![finding_id, aid, report_id],
+        )?;
+        written += n;
+    }
+    tx.commit()?;
+    Ok(written)
+}
+
+/// List the asset ids linked to a finding (raw — includes links to assets that
+/// may since have been tombstoned; callers wanting live assets should join).
+/// Provided for completeness alongside [`list_finding_assets`]; not yet wired to
+/// a command.
+#[allow(dead_code)]
+pub fn list_finding_asset_ids(conn: &Connection, finding_id: &str) -> AppResult<Vec<String>> {
+    let mut stmt = conn
+        .prepare("SELECT asset_id FROM finding_assets WHERE finding_id = ?1 ORDER BY asset_id")?;
+    let mut rows = stmt.query(params![finding_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row.get(0)?);
+    }
+    Ok(out)
+}
+
+/// List the LIVE assets linked to a finding, ordered by the asset sort order.
+/// Tombstoned assets are filtered out (the link row survives but the asset is
+/// gone). Used by `list_finding_assets` and the render layer.
+pub fn list_finding_assets(conn: &Connection, finding_id: &str) -> AppResult<Vec<Asset>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.report_id, a.kind, a.identifier, a.description, \
+                a.sort_order, a.created_at, a.updated_at, a.deleted_at \
+         FROM finding_assets fa \
+         JOIN assets a ON a.id = fa.asset_id \
+         WHERE fa.finding_id = ?1 AND a.deleted_at IS NULL \
+         ORDER BY a.sort_order, a.created_at",
+    )?;
+    let mut rows = stmt.query(params![finding_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let kind: String = row.get("kind")?;
+        out.push(Asset {
+            id: row.get("id")?,
+            report_id: row.get("report_id")?,
+            kind: AssetKind::from_db(&kind),
+            identifier: row.get("identifier")?,
+            description: row.get("description")?,
+            sort_order: row.get("sort_order")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
+            deleted_at: row.get("deleted_at")?,
+        });
+    }
+    Ok(out)
+}
+
+/// All `(finding_id, asset_id)` link pairs across the vault (sync snapshot).
+/// Ordered for a deterministic snapshot.
+pub fn list_all_finding_asset_links(conn: &Connection) -> AppResult<Vec<(String, String)>> {
+    let mut stmt = conn
+        .prepare("SELECT finding_id, asset_id FROM finding_assets ORDER BY finding_id, asset_id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((row.get(0)?, row.get(1)?));
+    }
+    Ok(out)
+}
+
+/// Insert a single `(finding_id, asset_id)` link if not already present (sync
+/// merge UNION). No-op when either endpoint is absent (FK) — the caller checks
+/// existence first; `OR IGNORE` also guards the PK and a racing duplicate.
+/// Returns `true` if a new link row was written.
+pub fn link_finding_asset(conn: &Connection, finding_id: &str, asset_id: &str) -> AppResult<bool> {
+    let n = conn.execute(
+        "INSERT OR IGNORE INTO finding_assets (finding_id, asset_id) VALUES (?1, ?2)",
+        params![finding_id, asset_id],
+    )?;
+    Ok(n > 0)
 }

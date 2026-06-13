@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Report depth: assets, scope, engagement metadata, branding
+- **Affected-assets model**: a per-report asset inventory (host/ip/url/domain/credential/other) with a
+  finding↔asset link, surfaced as an "Affected assets" list per finding and managed in the report.
+- **Structured scope**: in-scope / out-of-scope items (replacing the free-text-only scope) rendered as a
+  scope table in exports.
+- **Engagement metadata**: authors, reviewer, engagement period (dates), reference, and a confidentiality
+  banner on the report cover.
+- **Per-report branding**: upload a logo (metadata-stripped) shown on the exported cover.
+- Schema migration to **v6**; all new tables/columns participate in encrypted sync (LWW + tombstones;
+  finding↔asset links union-merge, logos are monotonic — documented). New localized labels (EN/FR).
+
 ### Rendering quality
 - **HTML exports render Markdown prose** (via pulldown-cmark, raw-HTML stripped) instead of showing
   literal `**bold**`/lists; added a `@media print` light stylesheet.

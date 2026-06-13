@@ -13,11 +13,35 @@ use serde::{Deserialize, Serialize};
 
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::{EvidenceImage, Finding, KbEntry, Report};
+use crate::models::{Asset, EvidenceImage, Finding, KbEntry, Report, ScopeItem};
 
 /// Current bundle schema version. Bump when the on-wire shape changes in a way
 /// older readers cannot tolerate.
-pub const BUNDLE_VERSION: u32 = 1;
+///
+/// v2 (schema v6) added `assets`, `scope_items`, `finding_asset_links` and
+/// `report_logos`. These are all `#[serde(default)]`, so a v1 bundle still
+/// deserializes (the new collections default to empty) — readers accept it.
+pub const BUNDLE_VERSION: u32 = 2;
+
+/// A finding↔asset link pair carried in the bundle (the derived set). On merge
+/// the link set is UNIONed for findings that exist locally; link *removals* do
+/// NOT propagate (a documented limitation — see `sync::merge`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FindingAssetLink {
+    pub finding_id: String,
+    pub asset_id: String,
+}
+
+/// A per-report branding logo carried in the bundle: mime + base64 bytes. Only
+/// reports that actually have a logo are included. Merged when the report exists
+/// and currently has no logo (monotonic — sync never clears a logo).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportLogo {
+    pub report_id: String,
+    pub mime: String,
+    /// Standard-alphabet base64 of the raw logo bytes.
+    pub data_base64: String,
+}
 
 /// An evidence image carried inside a bundle: the usual metadata PLUS the image
 /// bytes, base64-encoded so they survive JSON. (The live [`EvidenceImage`]
@@ -82,6 +106,19 @@ pub struct SyncBundle {
     pub findings: Vec<Finding>,
     pub kb_entries: Vec<KbEntry>,
     pub evidence_images: Vec<EvidenceImageFull>,
+    /// Affected assets (aggregate report layer, bundle v2). Defaults empty so a
+    /// v1 bundle still deserializes.
+    #[serde(default)]
+    pub assets: Vec<Asset>,
+    /// Structured scope items (bundle v2). Defaults empty.
+    #[serde(default)]
+    pub scope_items: Vec<ScopeItem>,
+    /// Finding↔asset links — the derived set, UNION-merged (bundle v2).
+    #[serde(default)]
+    pub finding_asset_links: Vec<FindingAssetLink>,
+    /// Per-report branding logos (bundle v2). Defaults empty.
+    #[serde(default)]
+    pub report_logos: Vec<ReportLogo>,
 }
 
 impl SyncBundle {
@@ -94,6 +131,30 @@ impl SyncBundle {
             .into_iter()
             .map(|(meta, data)| EvidenceImageFull::from_parts(meta, &data))
             .collect();
+        let assets = db::assets::list_all(conn)?;
+        let scope_items = db::scope::list_all(conn)?;
+        let finding_asset_links = db::findings::list_all_finding_asset_links(conn)?
+            .into_iter()
+            .map(|(finding_id, asset_id)| FindingAssetLink {
+                finding_id,
+                asset_id,
+            })
+            .collect();
+
+        // Carry each live report's logo bytes (only those that actually have one).
+        let mut report_logos = Vec::new();
+        for r in &reports {
+            if r.deleted_at.is_some() {
+                continue;
+            }
+            if let Some((mime, data)) = db::reports::get_logo(conn, &r.id)? {
+                report_logos.push(ReportLogo {
+                    report_id: r.id.clone(),
+                    mime,
+                    data_base64: B64.encode(&data),
+                });
+            }
+        }
 
         Ok(SyncBundle {
             version: BUNDLE_VERSION,
@@ -102,6 +163,10 @@ impl SyncBundle {
             findings,
             kb_entries,
             evidence_images,
+            assets,
+            scope_items,
+            finding_asset_links,
+            report_logos,
         })
     }
 
@@ -130,9 +195,23 @@ impl SyncBundle {
 mod tests {
     use super::*;
     use crate::models::{
-        Confidence, Evidence, FindingDescription, FindingKind, FindingRemediation, ReportType,
-        Severity, StructuredPoc, TriageStatus,
+        AssetKind, Confidence, Evidence, FindingDescription, FindingKind, FindingRemediation,
+        ReportType, Severity, StructuredPoc, TriageStatus,
     };
+
+    fn sample_asset() -> Asset {
+        Asset {
+            id: "a-1".into(),
+            report_id: "r-1".into(),
+            kind: AssetKind::Url,
+            identifier: "https://app.example.com".into(),
+            description: "Main app".into(),
+            sort_order: 0,
+            created_at: "2026-06-12T10:00:00+00:00".into(),
+            updated_at: "2026-06-12T10:00:00+00:00".into(),
+            deleted_at: None,
+        }
+    }
 
     fn sample_report() -> Report {
         Report {
@@ -145,6 +224,13 @@ mod tests {
             scope: "scope".into(),
             methodology: "method".into(),
             language: "en".into(),
+            engagement_start: Some("2026-06-01".into()),
+            engagement_end: Some("2026-06-10".into()),
+            authors: vec!["Alice".into(), "Bob".into()],
+            reviewer: Some("Carol".into()),
+            engagement_ref: Some("PO-42".into()),
+            confidentiality: Some("Confidential".into()),
+            has_logo: false,
             created_at: "2026-06-12T10:00:00+00:00".into(),
             updated_at: "2026-06-12T11:00:00+00:00".into(),
             deleted_at: None,
@@ -217,6 +303,13 @@ mod tests {
             findings: vec![sample_finding()],
             kb_entries: vec![],
             evidence_images: vec![sample_image()],
+            assets: vec![sample_asset()],
+            scope_items: vec![],
+            finding_asset_links: vec![FindingAssetLink {
+                finding_id: "f-1".into(),
+                asset_id: "a-1".into(),
+            }],
+            report_logos: vec![],
         };
 
         let json = bundle.to_json().unwrap();
@@ -225,6 +318,12 @@ mod tests {
         assert_eq!(back.version, bundle.version);
         assert_eq!(back.reports.len(), 1);
         assert_eq!(back.reports[0].id, "r-1");
+        // Engagement metadata round-trips.
+        assert_eq!(back.reports[0].authors, vec!["Alice", "Bob"]);
+        assert_eq!(back.reports[0].engagement_ref.as_deref(), Some("PO-42"));
+        assert_eq!(back.assets.len(), 1);
+        assert_eq!(back.finding_asset_links.len(), 1);
+        assert_eq!(back.finding_asset_links[0].asset_id, "a-1");
         assert_eq!(back.findings.len(), 1);
         assert_eq!(back.findings[0].cwe.as_deref(), Some("CWE-89"));
         assert_eq!(
@@ -267,10 +366,34 @@ mod tests {
             findings: vec![],
             kb_entries: vec![],
             evidence_images: vec![],
+            assets: vec![],
+            scope_items: vec![],
+            finding_asset_links: vec![],
+            report_logos: vec![],
         };
         let json = bundle.to_json().unwrap();
         let err = SyncBundle::from_json(&json).unwrap_err();
         assert!(matches!(err, AppError::Sync(_)));
+    }
+
+    /// A v1 bundle (no aggregate-layer collections) still deserializes — the new
+    /// fields default to empty rather than failing the parse.
+    #[test]
+    fn v1_bundle_without_aggregate_fields_still_parses() {
+        let json = br#"{
+            "version": 1,
+            "exported_at": "2026-06-12T12:00:00+00:00",
+            "reports": [],
+            "findings": [],
+            "kb_entries": [],
+            "evidence_images": []
+        }"#;
+        let back = SyncBundle::from_json(json).unwrap();
+        assert_eq!(back.version, 1);
+        assert!(back.assets.is_empty());
+        assert!(back.scope_items.is_empty());
+        assert!(back.finding_asset_links.is_empty());
+        assert!(back.report_logos.is_empty());
     }
 
     #[test]

@@ -69,9 +69,66 @@ export interface Report {
   /** Delivery language of the *exported* report (section titles etc.), independent
    * of the app UI language. Backend default is "en". */
   language: string;
+  /** Engagement metadata (aggregate report layer). */
+  engagement_start?: string;
+  engagement_end?: string;
+  authors: string[];
+  reviewer?: string;
+  engagement_ref?: string;
+  confidentiality?: string;
+  /** Whether a branding logo has been uploaded for this report's cover. */
+  has_logo: boolean;
   created_at: string;
   updated_at: string;
 }
+
+// ── Affected assets ──────────────────────────────────────────────────────────
+
+export type AssetKind = "host" | "ip" | "url" | "domain" | "credential" | "other";
+
+export interface Asset {
+  id: string;
+  report_id: string;
+  kind: AssetKind;
+  identifier: string;
+  description: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewAsset {
+  kind: AssetKind;
+  identifier: string;
+  description?: string;
+}
+
+export type AssetPatch = Partial<Pick<Asset, "kind" | "identifier" | "description">>;
+
+// ── Structured scope ─────────────────────────────────────────────────────────
+
+export interface ScopeItem {
+  id: string;
+  report_id: string;
+  kind: string;
+  value: string;
+  in_scope: boolean;
+  note: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewScopeItem {
+  kind: string;
+  value: string;
+  in_scope: boolean;
+  note?: string;
+}
+
+export type ScopeItemPatch = Partial<
+  Pick<ScopeItem, "kind" | "value" | "in_scope" | "note">
+>;
 
 export interface ReportSummary {
   id: string;
@@ -135,6 +192,12 @@ export type ReportPatch = Partial<
     | "scope"
     | "methodology"
     | "language"
+    | "engagement_start"
+    | "engagement_end"
+    | "authors"
+    | "reviewer"
+    | "engagement_ref"
+    | "confidentiality"
   >
 >;
 

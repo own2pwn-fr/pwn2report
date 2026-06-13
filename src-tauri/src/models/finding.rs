@@ -205,38 +205,28 @@ pub struct FindingPatch {
     pub confidence: Option<Confidence>,
     #[serde(default)]
     pub kind: Option<FindingKind>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub cwe: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub cve: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub cvss_vector: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub cvss_score: Option<Option<f64>>,
     #[serde(default)]
     pub triage_status: Option<TriageStatus>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub triage_note: Option<Option<String>>,
     #[serde(default)]
     pub description: Option<FindingDescription>,
     #[serde(default)]
     pub remediation: Option<FindingRemediation>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub evidence: Option<Option<Evidence>>,
-    #[serde(default, deserialize_with = "double_option")]
+    #[serde(default, deserialize_with = "super::double_option")]
     pub poc: Option<Option<StructuredPoc>>,
     #[serde(default)]
     pub refs: Option<Vec<String>>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
-}
-
-/// Distinguishes "field absent" (`None`) from "field present and null"
-/// (`Some(None)`) when deserializing a patch object.
-fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Deserialize::deserialize(deserializer).map(Some)
 }

@@ -23,7 +23,9 @@ import {
 } from "@/components/ui/dialog";
 import { CvssCalculator } from "@/components/cvss-calculator";
 import { EvidenceGallery } from "@/components/evidence/evidence-gallery";
+import { FindingAssetsField } from "@/components/findings/finding-assets-field";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
+import { useFindingAssets } from "@/lib/queries/use-finding-assets";
 import {
   emptyState,
   stateFromFinding,
@@ -243,11 +245,21 @@ export function FindingForm({
   /** Report this finding belongs to — used to key per-report "new" drafts. */
   reportId: string;
   finding?: Finding;
-  onCreate: (input: NewFinding) => void;
-  onUpdate: (id: string, patch: FindingPatch) => void;
+  /** `assetIds` is the set of report assets this finding affects, persisted by
+   * the parent once the finding id is known (after create / on update). */
+  onCreate: (input: NewFinding, assetIds: string[]) => void;
+  onUpdate: (id: string, patch: FindingPatch, assetIds: string[]) => void;
   pending: boolean;
 }) {
   const { t } = useTranslation();
+
+  // Affected-assets selection. Loaded for an existing finding; empty for new.
+  const { data: findingAssets } = useFindingAssets(finding?.id);
+  const [assetIds, setAssetIds] = useState<string[]>([]);
+  // Sync the loaded selection in (only for the finding under edit).
+  useEffect(() => {
+    if (findingAssets) setAssetIds(findingAssets.map((a) => a.id));
+  }, [findingAssets]);
 
   // The pristine baseline for dirty-tracking: the finding under edit, or empty.
   const initial = useMemo<FindingFormState>(
@@ -308,8 +320,8 @@ export function FindingForm({
     if (blocked) return;
     submittedRef.current = true;
     clearDraft(key);
-    if (finding) onUpdate(finding.id, toPatch(state));
-    else onCreate(toNewFinding(state));
+    if (finding) onUpdate(finding.id, toPatch(state), assetIds);
+    else onCreate(toNewFinding(state), assetIds);
   };
 
   return (
@@ -625,6 +637,11 @@ export function FindingForm({
 
             {/* ── References & tags ─────────────────────────────────────────── */}
             <Section title={t("findings.section.metadata")}>
+              <FindingAssetsField
+                reportId={reportId}
+                selected={assetIds}
+                onChange={setAssetIds}
+              />
               <ListEditor
                 label={t("findings.fieldRefs")}
                 items={state.refs}

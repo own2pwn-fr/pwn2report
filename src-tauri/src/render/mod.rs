@@ -35,7 +35,14 @@ mod tests {
     #[test]
     fn all_bundled_themes_compile_to_pdf() {
         for slug in ["web_pentest", "code_audit", "red_team"] {
-            let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+            let doc = build_document(
+                &sample_report(),
+                vec![sample_finding()],
+                &HashMap::new(),
+                &[],
+                &HashMap::new(),
+                None,
+            );
             let pdf = PdfRenderer::bundled(slug)
                 .render(doc)
                 .unwrap_or_else(|e| panic!("theme {slug} failed to compile: {e:?}"));
@@ -50,7 +57,14 @@ mod tests {
 
     #[test]
     fn markdown_and_html_render_finding_content() {
-        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let md = to_markdown(&doc);
         assert!(md.contains("Test Report") && md.contains("SQL Injection"));
         let html = to_html(&doc);
@@ -71,7 +85,14 @@ mod tests {
             eprintln!("pandoc not found on PATH; skipping docx render test");
             return;
         }
-        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let bytes = to_docx(&doc).expect("docx render failed");
         assert!(bytes.starts_with(b"PK"), "docx must be a zip (PK header)");
         assert!(
@@ -101,7 +122,14 @@ mod tests {
             )],
         );
         for slug in ["web_pentest", "code_audit", "red_team"] {
-            let doc = build_document(&sample_report(), vec![sample_finding()], &images);
+            let doc = build_document(
+                &sample_report(),
+                vec![sample_finding()],
+                &images,
+                &[],
+                &HashMap::new(),
+                None,
+            );
             let pdf = PdfRenderer::bundled(slug)
                 .render(doc)
                 .unwrap_or_else(|e| panic!("theme {slug} with image failed: {e:?}"));
@@ -142,7 +170,14 @@ mod tests {
         report.methodology = "## Approach\n\nManual + `automated` testing.".to_string();
 
         for slug in ["web_pentest", "code_audit", "red_team"] {
-            let doc = build_document(&report, vec![finding.clone()], &HashMap::new());
+            let doc = build_document(
+                &report,
+                vec![finding.clone()],
+                &HashMap::new(),
+                &[],
+                &HashMap::new(),
+                None,
+            );
             let pdf = PdfRenderer::bundled(slug)
                 .render(doc)
                 .unwrap_or_else(|e| panic!("theme {slug} failed on markdown prose: {e:?}"));
@@ -163,7 +198,14 @@ mod tests {
         let mut finding = sample_finding();
         finding.description.summary = "A **bold** point with `code`.\n\n- one\n- two".to_string();
         finding.remediation.fix = "Use [docs](https://x).".to_string();
-        let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![finding],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
 
         // Markdown renderer: prose passes through verbatim (still markdown).
         let md = to_markdown(&doc);
@@ -213,7 +255,14 @@ mod tests {
                 tiny_png(),
             )],
         );
-        let doc = build_document(&sample_report(), vec![sample_finding()], &images);
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &images,
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let html = to_html(&doc);
         assert!(
             html.contains("data:image/png;base64,"),

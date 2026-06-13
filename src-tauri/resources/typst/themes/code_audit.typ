@@ -16,7 +16,7 @@
 // Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
-#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
+#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images, scope-table, affected-assets
 
 #let doc = inputs
 // Localized label dict injected by the Rust render IR (doc.labels.*).
@@ -57,7 +57,7 @@
 // ---------------------------------------------------------------------------
 // Title page
 // ---------------------------------------------------------------------------
-#title-page(doc)
+#title-page(doc, l)
 
 #pagebreak()
 
@@ -87,9 +87,10 @@
 // ---------------------------------------------------------------------------
 // Scope & methodology
 // ---------------------------------------------------------------------------
-#if doc.scope != "" {
+#if doc.scope != "" or ("scope_items" in doc and doc.scope_items.len() > 0) {
   heading(level: 1, l.scope)
-  block(prose(doc.scope))
+  if doc.scope != "" { block(prose(doc.scope)) }
+  if "scope_items" in doc { scope-table(doc.scope_items, l) }
 }
 #if doc.methodology != "" {
   heading(level: 1, l.methodology)
@@ -131,6 +132,9 @@
     facet(l.technical_details, f.technical_details)
     facet(l.attack_vector, f.attack_vector)
     facet(l.business_impact, f.business_impact)
+
+    // Affected assets (the finding↔asset link set).
+    affected-assets(f, l.affected_assets)
 
     // Proof of Concept (optional, secondary in an audit).
     if f.has_poc {

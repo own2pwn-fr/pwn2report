@@ -2,12 +2,14 @@
 //! `Result<T, AppError>`.
 
 pub mod ai;
+pub mod assets;
 pub mod evidence;
 pub mod export;
 pub mod findings;
 pub mod import;
 pub mod kb;
 pub mod reports;
+pub mod scope;
 pub mod sync;
 pub mod templates;
 pub mod vault;

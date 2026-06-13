@@ -123,6 +123,29 @@ pub struct Labels {
     pub cvss_unchanged: &'static str,
     pub cvss_changed: &'static str,
 
+    // Aggregate report layer: scope table.
+    /// Structured-scope section heading.
+    pub scope_table: &'static str,
+    pub in_scope: &'static str,
+    pub out_of_scope: &'static str,
+    /// Per-finding "Affected assets" label.
+    pub affected_assets: &'static str,
+
+    // Engagement metadata (title page).
+    pub authors: &'static str,
+    pub reviewer: &'static str,
+    pub engagement_period: &'static str,
+    pub reference: &'static str,
+    pub confidentiality: &'static str,
+
+    // Asset kinds (host / ip / url / domain / credential / other).
+    pub asset_host: &'static str,
+    pub asset_ip: &'static str,
+    pub asset_url: &'static str,
+    pub asset_domain: &'static str,
+    pub asset_credential: &'static str,
+    pub asset_other: &'static str,
+
     // Fallbacks.
     pub no_findings: &'static str,
 }
@@ -207,6 +230,24 @@ const EN: Labels = Labels {
     cvss_unchanged: "Unchanged",
     cvss_changed: "Changed",
 
+    scope_table: "Scope",
+    in_scope: "In scope",
+    out_of_scope: "Out of scope",
+    affected_assets: "Affected assets",
+
+    authors: "Authors",
+    reviewer: "Reviewer",
+    engagement_period: "Engagement period",
+    reference: "Reference",
+    confidentiality: "Confidentiality",
+
+    asset_host: "Host",
+    asset_ip: "IP",
+    asset_url: "URL",
+    asset_domain: "Domain",
+    asset_credential: "Credential",
+    asset_other: "Other",
+
     no_findings: "No findings recorded for this report.",
 };
 
@@ -289,6 +330,24 @@ const FR: Labels = Labels {
     cvss_present: "Présent",
     cvss_unchanged: "Inchangée",
     cvss_changed: "Modifiée",
+
+    scope_table: "Périmètre",
+    in_scope: "Dans le périmètre",
+    out_of_scope: "Hors périmètre",
+    affected_assets: "Actifs affectés",
+
+    authors: "Auteurs",
+    reviewer: "Relecteur",
+    engagement_period: "Période d'engagement",
+    reference: "Référence",
+    confidentiality: "Confidentialité",
+
+    asset_host: "Hôte",
+    asset_ip: "IP",
+    asset_url: "URL",
+    asset_domain: "Domaine",
+    asset_credential: "Identifiant",
+    asset_other: "Autre",
 
     no_findings: "Aucune vulnérabilité enregistrée pour ce rapport.",
 };

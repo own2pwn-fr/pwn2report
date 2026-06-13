@@ -117,6 +117,18 @@ code {
   color: #c7c7cf;
   margin-right: 0.35rem;
 }
+.confidentiality {
+  display: inline-block;
+  margin-bottom: 1rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+img.logo { max-height: 80px; width: auto; margin-bottom: 1rem; display: block; }
 .finding { padding: 1.25rem 0; border-bottom: 1px solid #26262c; }
 .loc { color: #9b9ba3; }
 ol, ul { margin: 0.25rem 0 1rem; padding-left: 1.4rem; }
@@ -177,6 +189,24 @@ pub fn to_html(doc: &ReportDocument) -> String {
     out.push_str(STYLE);
     out.push_str("</style>\n</head>\n<body>\n<div class=\"container\">\n");
 
+    // Confidentiality banner.
+    if !doc.confidentiality.is_empty() {
+        out.push_str(&format!(
+            "<div class=\"confidentiality\">{}</div>\n",
+            esc(&doc.confidentiality.to_uppercase())
+        ));
+    }
+
+    // Branding logo (inlined as a base64 data-URI so the doc is self-contained).
+    if doc.has_logo && !doc.logo.as_slice().is_empty() {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(doc.logo.as_slice());
+        out.push_str(&format!(
+            "<img class=\"logo\" src=\"data:{};base64,{}\" alt=\"\">\n",
+            esc(&doc.logo_mime),
+            b64
+        ));
+    }
+
     out.push_str(&format!("<h1>{}</h1>\n", esc(&doc.title)));
 
     // Metadata.
@@ -207,6 +237,35 @@ pub fn to_html(doc: &ReportDocument) -> String {
             "<strong>{}:</strong> {}",
             esc(l.date),
             esc(&doc.date)
+        ));
+    }
+    if !doc.authors.is_empty() {
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.authors),
+            esc(&doc.authors.join(", "))
+        ));
+    }
+    if !doc.reviewer.is_empty() {
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.reviewer),
+            esc(&doc.reviewer)
+        ));
+    }
+    let period = engagement_period(&doc.engagement_start, &doc.engagement_end);
+    if !period.is_empty() {
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.engagement_period),
+            esc(&period)
+        ));
+    }
+    if !doc.engagement_ref.is_empty() {
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.reference),
+            esc(&doc.engagement_ref)
         ));
     }
     if !meta.is_empty() {
@@ -247,9 +306,12 @@ pub fn to_html(doc: &ReportDocument) -> String {
         doc.summary.total
     ));
 
-    if !doc.scope.is_empty() {
+    if !doc.scope.is_empty() || !doc.scope_items.is_empty() {
         out.push_str(&format!("<h2>{}</h2>\n", esc(l.scope)));
-        para(&mut out, &doc.scope);
+        if !doc.scope.is_empty() {
+            para(&mut out, &doc.scope);
+        }
+        push_scope_table(&mut out, doc, l);
     }
     if !doc.methodology.is_empty() {
         out.push_str(&format!("<h2>{}</h2>\n", esc(l.methodology)));
@@ -267,6 +329,48 @@ pub fn to_html(doc: &ReportDocument) -> String {
 
     out.push_str("</div>\n</body>\n</html>\n");
     out
+}
+
+/// Combine engagement start/end into a single display string ("" when both
+/// empty, a single date when only one is set, else "start – end").
+fn engagement_period(start: &str, end: &str) -> String {
+    match (start.is_empty(), end.is_empty()) {
+        (true, true) => String::new(),
+        (false, false) => format!("{start} – {end}"),
+        (false, true) => start.to_string(),
+        (true, false) => end.to_string(),
+    }
+}
+
+/// Emit the structured-scope tables (in-scope / out-of-scope) when present.
+fn push_scope_table(out: &mut String, doc: &ReportDocument, l: &Labels) {
+    if doc.scope_items.is_empty() {
+        return;
+    }
+    let mut emit = |heading: &str, in_scope: bool| {
+        let rows: Vec<_> = doc
+            .scope_items
+            .iter()
+            .filter(|s| s.in_scope == in_scope)
+            .collect();
+        if rows.is_empty() {
+            return;
+        }
+        out.push_str(&format!("<h3>{}</h3>\n<table>\n", esc(heading)));
+        out.push_str("<tr><th>Kind</th><th>Value</th><th>Note</th></tr>\n");
+        for s in rows {
+            let kind = if s.kind.is_empty() { "—" } else { &s.kind };
+            out.push_str(&format!(
+                "<tr><td>{}</td><td><code>{}</code></td><td>{}</td></tr>\n",
+                esc(kind),
+                esc(&s.value),
+                esc(&s.note)
+            ));
+        }
+        out.push_str("</table>\n");
+    };
+    emit(l.in_scope, true);
+    emit(l.out_of_scope, false);
 }
 
 /// A severity color chip.
@@ -337,6 +441,28 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput, l: &Labels) {
     facet(out, l.attack_vector, &f.attack_vector);
     facet(out, l.business_impact, &f.business_impact);
     facet(out, l.technical_details, &f.technical_details);
+
+    // Affected assets (the finding↔asset link set).
+    if !f.affected_assets.is_empty() {
+        out.push_str(&format!(
+            "<div class=\"facet-label\">{}</div>\n<ul>\n",
+            esc(l.affected_assets)
+        ));
+        for a in &f.affected_assets {
+            let desc = if a.description.is_empty() {
+                String::new()
+            } else {
+                format!(" &mdash; {}", esc(&a.description))
+            };
+            out.push_str(&format!(
+                "<li><span class=\"tag\">{}</span> <code>{}</code>{}</li>\n",
+                esc(&a.kind_label),
+                esc(&a.identifier),
+                desc
+            ));
+        }
+        out.push_str("</ul>\n");
+    }
 
     // Evidence.
     if f.has_evidence {
@@ -472,7 +598,14 @@ mod tests {
     fn html_is_self_contained_and_escapes_user_content() {
         let mut finding = sample_finding();
         finding.title = "XSS <script>alert(1)</script>".to_string();
-        let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![finding],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let html = to_html(&doc);
 
         assert!(html.starts_with("<!DOCTYPE html>"));
@@ -506,7 +639,14 @@ mod tests {
         let mut finding = sample_finding();
         // Markdown + an embedded raw <script> that must NOT survive.
         finding.description.summary = "Be **careful** here.<script>alert(1)</script>".to_string();
-        let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![finding],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let html = to_html(&doc);
         assert!(
             html.contains("<strong>careful</strong>"),
@@ -522,14 +662,28 @@ mod tests {
 
     #[test]
     fn print_media_block_present() {
-        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let html = to_html(&doc);
         assert!(html.contains("@media print"), "print stylesheet missing");
     }
 
     #[test]
     fn cvss_vector_decoded_into_grid() {
-        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let html = to_html(&doc);
         // The sample finding's v3.1 vector decodes to a labelled grid.
         assert!(html.contains("<dl class=\"cvss\">"), "cvss grid missing");
@@ -549,7 +703,14 @@ mod tests {
             "f1".to_string(),
             vec![("Login bypass".to_string(), "image/png".to_string(), png)],
         );
-        let doc = build_document(&sample_report(), vec![sample_finding()], &images);
+        let doc = build_document(
+            &sample_report(),
+            vec![sample_finding()],
+            &images,
+            &[],
+            &HashMap::new(),
+            None,
+        );
         let html = to_html(&doc);
 
         assert!(html.contains("<img src=\"data:image/png;base64,iVBOR"));

@@ -15,7 +15,7 @@
 // Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
-#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
+#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images, scope-table, affected-assets
 
 #let doc = inputs
 // Localized label dict injected by the Rust render IR (doc.labels.*).
@@ -41,7 +41,7 @@
 // ---------------------------------------------------------------------------
 // Title page
 // ---------------------------------------------------------------------------
-#title-page(doc)
+#title-page(doc, l)
 
 #pagebreak()
 
@@ -71,9 +71,10 @@
 // ---------------------------------------------------------------------------
 // Scope (rules of engagement) & methodology (attack approach)
 // ---------------------------------------------------------------------------
-#if doc.scope != "" {
+#if doc.scope != "" or ("scope_items" in doc and doc.scope_items.len() > 0) {
   heading(level: 1, l.rules_of_engagement)
-  block(prose(doc.scope))
+  if doc.scope != "" { block(prose(doc.scope)) }
+  if "scope_items" in doc { scope-table(doc.scope_items, l) }
 }
 #if doc.methodology != "" {
   heading(level: 1, l.approach)
@@ -119,6 +120,9 @@
     facet(l.business_impact, f.business_impact)
     facet(l.technical_details, f.technical_details)
     facet(l.root_cause, f.root_cause)
+
+    // Affected assets / targets (the finding↔asset link set).
+    affected-assets(f, l.affected_assets)
 
     // Evidence captured during the operation.
     if f.has_evidence {

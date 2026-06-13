@@ -10,6 +10,8 @@ import i18n from "@/i18n";
 import type {
   AiConfig,
   AiConfigView,
+  Asset,
+  AssetPatch,
   EvidenceImage,
   Finding,
   FindingPatch,
@@ -17,13 +19,17 @@ import type {
   IpcError,
   KbEntry,
   KbPatch,
+  NewAsset,
   NewFinding,
   NewKbEntry,
   NewReport,
+  NewScopeItem,
   Report,
   ReportPatch,
   ReportSummary,
   ReportType,
+  ScopeItem,
+  ScopeItemPatch,
   SyncSummary,
   TemplateInfo,
   VaultStatus,
@@ -131,6 +137,56 @@ export const deleteFinding = (id: string) => invoke<void>("delete_finding", { id
 
 export const reorderFindings = (reportId: string, orderedIds: string[]) =>
   invoke<void>("reorder_findings", { reportId, orderedIds });
+
+// ── Affected assets ──────────────────────────────────────────────────────────
+
+export const listAssets = (reportId: string) => invoke<Asset[]>("list_assets", { reportId });
+
+export const createAsset = (reportId: string, input: NewAsset) =>
+  invoke<Asset>("create_asset", { reportId, input });
+
+export const updateAsset = (id: string, patch: AssetPatch) =>
+  invoke<Asset>("update_asset", { id, patch });
+
+export const deleteAsset = (id: string) => invoke<void>("delete_asset", { id });
+
+export const reorderAssets = (reportId: string, orderedIds: string[]) =>
+  invoke<void>("reorder_assets", { reportId, orderedIds });
+
+// ── Structured scope ─────────────────────────────────────────────────────────
+
+export const listScopeItems = (reportId: string) =>
+  invoke<ScopeItem[]>("list_scope_items", { reportId });
+
+export const createScopeItem = (reportId: string, input: NewScopeItem) =>
+  invoke<ScopeItem>("create_scope_item", { reportId, input });
+
+export const updateScopeItem = (id: string, patch: ScopeItemPatch) =>
+  invoke<ScopeItem>("update_scope_item", { id, patch });
+
+export const deleteScopeItem = (id: string) => invoke<void>("delete_scope_item", { id });
+
+export const reorderScopeItems = (reportId: string, orderedIds: string[]) =>
+  invoke<void>("reorder_scope_items", { reportId, orderedIds });
+
+// ── Finding ↔ assets ─────────────────────────────────────────────────────────
+
+export const setFindingAssets = (findingId: string, assetIds: string[]) =>
+  invoke<void>("set_finding_assets", { findingId, assetIds });
+
+export const listFindingAssets = (findingId: string) =>
+  invoke<Asset[]>("list_finding_assets", { findingId });
+
+// ── Report logo / branding ───────────────────────────────────────────────────
+
+export const setReportLogo = (reportId: string, mime: string, data: number[]) =>
+  invoke<void>("set_report_logo", { reportId, mime, data });
+
+export const getReportLogo = (reportId: string) =>
+  invoke<number[]>("get_report_logo", { reportId });
+
+export const clearReportLogo = (reportId: string) =>
+  invoke<void>("clear_report_logo", { reportId });
 
 // ── Export ─────────────────────────────────────────────────────────────────
 
