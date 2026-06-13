@@ -15,7 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows is built/verified in the release workflow (it needs vcpkg
+        # OpenSSL for SQLCipher's MSVC link); per-commit CI stays on Linux+macOS
+        # where the toolchain is fast and reliable.
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
