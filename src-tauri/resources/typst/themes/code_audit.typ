@@ -16,7 +16,7 @@
 // Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
-#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
+#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
 
 #let doc = inputs
 // Localized label dict injected by the Rust render IR (doc.labels.*).
@@ -35,7 +35,9 @@
 #set text(font: "Inter", size: 10.5pt, lang: doc.lang)
 #set par(justify: true, leading: 0.62em)
 #show heading: set text(fill: accent)
-#set heading(numbering: none)
+// Real heading numbering so sections + findings are numbered and outlined.
+#set heading(numbering: "1.1")
+#set figure(numbering: "1")
 
 // A prominent location banner ("file:lines"), monospace.
 #let location-banner(f) = {
@@ -60,6 +62,12 @@
 #pagebreak()
 
 // ---------------------------------------------------------------------------
+// Table of contents
+// ---------------------------------------------------------------------------
+#outline(title: l.table_of_contents, depth: 2)
+#pagebreak()
+
+// ---------------------------------------------------------------------------
 // Executive summary
 // ---------------------------------------------------------------------------
 #if doc.exec_summary != "" {
@@ -69,9 +77,10 @@
 }
 
 // ---------------------------------------------------------------------------
-// Severity summary table
+// Severity summary table + distribution bar
 // ---------------------------------------------------------------------------
 #heading(level: 1, l.findings_overview)
+#severity-distribution-bar(doc.summary)
 #severity-summary-table(doc.summary, l)
 #v(0.5em)
 
@@ -93,6 +102,10 @@
 #if doc.findings.len() > 0 {
   pagebreak()
   heading(level: 1, l.detailed_findings)
+
+  // At-a-glance summary table of all findings before the detailed write-ups.
+  findings-summary-table(doc.findings, l)
+  v(0.6em)
 
   for (i, f) in doc.findings.enumerate() {
     finding-heading(i + 1, f)

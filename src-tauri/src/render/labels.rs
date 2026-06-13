@@ -90,6 +90,39 @@ pub struct Labels {
     pub payload: &'static str,
     pub tags: &'static str,
 
+    // Findings-summary table column headers (the per-finding overview table).
+    /// "#" column header (finding index).
+    pub number: &'static str,
+    /// "Title" column header.
+    pub title: &'static str,
+    /// "Score" column header (CVSS numeric score).
+    pub score: &'static str,
+
+    // CVSS decoded-vector metric labels. Metric NAMES (left column of the grid).
+    pub cvss_attack_vector: &'static str,
+    pub cvss_attack_complexity: &'static str,
+    pub cvss_attack_requirements: &'static str,
+    pub cvss_privileges_required: &'static str,
+    pub cvss_user_interaction: &'static str,
+    pub cvss_scope: &'static str,
+    pub cvss_confidentiality: &'static str,
+    pub cvss_integrity: &'static str,
+    pub cvss_availability: &'static str,
+    // CVSS metric VALUES (right column of the grid).
+    pub cvss_network: &'static str,
+    pub cvss_adjacent: &'static str,
+    pub cvss_local: &'static str,
+    pub cvss_physical: &'static str,
+    pub cvss_low: &'static str,
+    pub cvss_high: &'static str,
+    pub cvss_none: &'static str,
+    pub cvss_required: &'static str,
+    pub cvss_passive: &'static str,
+    pub cvss_active: &'static str,
+    pub cvss_present: &'static str,
+    pub cvss_unchanged: &'static str,
+    pub cvss_changed: &'static str,
+
     // Fallbacks.
     pub no_findings: &'static str,
 }
@@ -147,6 +180,33 @@ const EN: Labels = Labels {
     payload: "Payload",
     tags: "Tags",
 
+    number: "#",
+    title: "Title",
+    score: "Score",
+
+    cvss_attack_vector: "Attack vector",
+    cvss_attack_complexity: "Attack complexity",
+    cvss_attack_requirements: "Attack requirements",
+    cvss_privileges_required: "Privileges required",
+    cvss_user_interaction: "User interaction",
+    cvss_scope: "Scope",
+    cvss_confidentiality: "Confidentiality",
+    cvss_integrity: "Integrity",
+    cvss_availability: "Availability",
+    cvss_network: "Network",
+    cvss_adjacent: "Adjacent",
+    cvss_local: "Local",
+    cvss_physical: "Physical",
+    cvss_low: "Low",
+    cvss_high: "High",
+    cvss_none: "None",
+    cvss_required: "Required",
+    cvss_passive: "Passive",
+    cvss_active: "Active",
+    cvss_present: "Present",
+    cvss_unchanged: "Unchanged",
+    cvss_changed: "Changed",
+
     no_findings: "No findings recorded for this report.",
 };
 
@@ -202,6 +262,33 @@ const FR: Labels = Labels {
     exploitation_steps: "Étapes d'exploitation",
     payload: "Charge utile",
     tags: "Étiquettes",
+
+    number: "N°",
+    title: "Titre",
+    score: "Score",
+
+    cvss_attack_vector: "Vecteur d'attaque",
+    cvss_attack_complexity: "Complexité de l'attaque",
+    cvss_attack_requirements: "Prérequis de l'attaque",
+    cvss_privileges_required: "Privilèges requis",
+    cvss_user_interaction: "Interaction utilisateur",
+    cvss_scope: "Portée",
+    cvss_confidentiality: "Confidentialité",
+    cvss_integrity: "Intégrité",
+    cvss_availability: "Disponibilité",
+    cvss_network: "Réseau",
+    cvss_adjacent: "Adjacent",
+    cvss_local: "Local",
+    cvss_physical: "Physique",
+    cvss_low: "Faible",
+    cvss_high: "Élevée",
+    cvss_none: "Aucun",
+    cvss_required: "Requise",
+    cvss_passive: "Passive",
+    cvss_active: "Active",
+    cvss_present: "Présent",
+    cvss_unchanged: "Inchangée",
+    cvss_changed: "Modifiée",
 
     no_findings: "Aucune vulnérabilité enregistrée pour ce rapport.",
 };

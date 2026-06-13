@@ -59,7 +59,8 @@
   }
 }
 
-// A monospace code block (used for snippets, payloads, patches).
+// A monospace code block (used for snippets, payloads, patches). Breakable so a
+// long block can span pages, and long lines wrap (instead of clipping the page).
 #let code-block(body) = {
   if body != none and body != "" {
     block(
@@ -68,7 +69,14 @@
       stroke: 0.5pt + luma(210),
       inset: 8pt,
       radius: 4pt,
-      text(font: "JetBrains Mono", size: 8.5pt, raw(body)),
+      breakable: true,
+      {
+        // Wrap long payloads/URLs: a non-justified paragraph lets long unbroken
+        // tokens break across lines instead of overflowing (clipping) the page.
+        set text(font: "JetBrains Mono", size: 8.5pt)
+        set par(justify: false, leading: 0.5em, linebreaks: "optimized")
+        raw(body, block: true)
+      },
     )
   }
 }
@@ -143,18 +151,101 @@
   )
 }
 
-// A finding's heading line: severity badge + numbered title.
-#let finding-heading(n, f) = block(spacing: 8pt, {
+// A horizontal stacked bar showing the severity distribution, sized from the
+// per-severity counts in `summary`. Each non-zero band is a colored `rect` whose
+// width is proportional to its share of the total. No-ops on an empty report.
+#let severity-distribution-bar(summary) = {
+  let total = summary.total
+  if total <= 0 { return }
+  let bands = (
+    ("critical", summary.critical),
+    ("high", summary.high),
+    ("medium", summary.medium),
+    ("low", summary.low),
+    ("info", summary.info),
+  )
+  block(spacing: 10pt, {
+    box(width: 100%, {
+      grid(
+        columns: bands.map(b => b.at(1) / total * 1fr).filter(c => c != 0fr),
+        rows: 14pt,
+        ..bands
+          .filter(b => b.at(1) > 0)
+          .map(b => rect(
+            width: 100%,
+            height: 100%,
+            fill: severity-color(b.at(0)),
+            stroke: none,
+          ))
+      )
+    })
+  })
+}
+
+// The per-finding summary table: one row per finding (#, title, severity badge,
+// CVSS score) with localized headers. `labels` is the injected localized dict.
+#let findings-summary-table(findings, labels) = {
+  if findings.len() == 0 { return }
+  let header = (
+    table.cell(fill: luma(245), text(weight: "bold", labels.number)),
+    table.cell(fill: luma(245), text(weight: "bold", labels.title)),
+    table.cell(fill: luma(245), text(weight: "bold", labels.severity)),
+    table.cell(fill: luma(245), text(weight: "bold", labels.cvss)),
+  )
+  let rows = ()
+  for (i, f) in findings.enumerate() {
+    rows.push(align(center, str(i + 1)))
+    rows.push(f.title)
+    rows.push(severity-badge(f.severity))
+    rows.push(align(center, if f.cvss_score != "" { f.cvss_score } else { "—" }))
+  }
+  table(
+    columns: (auto, 1fr, auto, auto),
+    align: (horizon, horizon, horizon, horizon),
+    stroke: 0.5pt + luma(220),
+    inset: 7pt,
+    ..header,
+    ..rows,
+  )
+}
+
+// A finding's heading: a REAL level-2 heading so it appears in the document
+// outline (TOC) and gets numbered by `#set heading(numbering: ...)`. The
+// severity badge is rendered as a prefix to the title text. `n` is kept in the
+// signature for call-site compatibility but the numbering is now owned by Typst.
+#let finding-heading(n, f) = heading(level: 2, {
+  box(baseline: 25%, severity-badge(f.severity))
+  h(6pt)
+  f.title
+})
+
+// A compact labelled grid of decoded CVSS base metrics (`f.cvss_metrics`, a list
+// of `(label, value)` dicts injected by the Rust render IR). The score, when
+// present, is shown as a pill colored by the finding's severity band. Defined
+// before `finding-meta` (which calls it) — Typst resolves identifiers against
+// the scope at definition time, so forward references must be avoided.
+#let cvss-grid(f) = block(spacing: 8pt, {
+  if f.cvss_score != "" {
+    box(
+      fill: severity-color(f.severity),
+      inset: (x: 7pt, y: 3pt),
+      radius: 4pt,
+      text(fill: white, weight: "bold", size: 9pt, "CVSS " + f.cvss_score),
+    )
+    v(4pt)
+  }
   grid(
-    columns: (auto, 1fr),
-    column-gutter: 10pt,
-    align: (horizon, horizon),
-    severity-badge(f.severity),
-    text(size: 13pt, weight: "bold", [#(n). #f.title]),
+    columns: (auto, auto, auto, auto),
+    column-gutter: 12pt,
+    row-gutter: 3pt,
+    ..f.cvss_metrics.map(m => (
+      text(size: 8pt, fill: luma(130), m.label + ":"),
+      text(size: 8pt, weight: "semibold", m.value),
+    )).flatten()
   )
 })
 
-// A finding's meta line (CWE / CVE / CVSS / confidence / kind) + CVSS vector.
+// A finding's meta line (CWE / CVE / CVSS / confidence / kind) + CVSS grid.
 // `labels` is the injected localized label dict (`doc.labels`).
 #let finding-meta(f, labels) = {
   let meta = ()
@@ -166,7 +257,10 @@
   if meta.len() > 0 {
     block(spacing: 6pt, text(size: 8.5pt, fill: luma(120), meta.join("  ·  ")))
   }
-  if f.cvss_vector != "" {
+  // CVSS: prefer the decoded metric grid; fall back to the raw vector string.
+  if "cvss_metrics" in f and f.cvss_metrics.len() > 0 {
+    cvss-grid(f)
+  } else if f.cvss_vector != "" {
     block(spacing: 8pt, text(size: 8pt, fill: luma(140), font: "JetBrains Mono", f.cvss_vector))
   }
 }
@@ -198,7 +292,14 @@
     for img in f.images {
       block(spacing: 8pt, {
         figure(
-          image(img.data, width: 85%),
+          // Constrain the image to a max-height box so tall screenshots don't
+          // overflow the page; `fit: "contain"` preserves aspect ratio.
+          box(
+            width: 85%,
+            height: 11cm,
+            clip: false,
+            image(img.data, width: 100%, height: 100%, fit: "contain"),
+          ),
           caption: if img.caption != "" { img.caption } else { none },
         )
       })

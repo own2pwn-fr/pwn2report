@@ -7,9 +7,31 @@
 //! HTML-escaped before insertion.
 
 use base64::Engine as _;
+use pulldown_cmark::{html as cmark_html, Event, Options, Parser};
 
 use super::content_model::{FindingInput, ReportDocument};
 use super::labels::Labels;
+
+/// Render authored Markdown prose to a safe HTML fragment.
+///
+/// The IR's prose fields are authored Markdown (the same raw text the Markdown
+/// renderer emits verbatim). For HTML we parse them with pulldown-cmark so bold,
+/// lists, links, inline code, etc. become real HTML elements — but we **drop**
+/// any raw `Html` / `InlineHtml` events first, so attacker-influenceable prose
+/// can never inject raw markup (e.g. a `<script>` typed into a finding). The
+/// parser still HTML-escapes text content of the Markdown it does emit.
+fn md_to_html(md: &str) -> String {
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    // Filter out raw HTML so inline/blocks of HTML in prose are not passed
+    // through (defense in depth — the source is attacker-influenceable).
+    let events =
+        Parser::new_ext(md, opts).filter(|ev| !matches!(ev, Event::Html(_) | Event::InlineHtml(_)));
+    let mut html = String::new();
+    cmark_html::push_html(&mut html, events);
+    html
+}
 
 /// Escape the five significant HTML characters in user content.
 fn esc(s: &str) -> String {
@@ -112,6 +134,30 @@ figure.evidence-img figcaption {
   font-size: 0.85rem;
   font-style: italic;
   margin-top: 0.35rem;
+}
+dl.cvss {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.85rem;
+}
+dl.cvss dt { color: #9b9ba3; }
+dl.cvss dd { margin: 0; color: #e5e5ea; font-weight: 600; }
+@media print {
+  :root { color-scheme: light; }
+  body { background: #fff; color: #000; }
+  h1, h3 { color: #000; }
+  h2 { color: #000; border-bottom-color: #000; }
+  a { color: #000; }
+  .meta, .meta strong, .loc, dl.cvss dt, dl.cvss dd,
+  figure.evidence-img figcaption, code { color: #000; }
+  .facet-label { color: #000; }
+  th { background: #eee; color: #000; }
+  tr.total td { background: #eee; }
+  pre { background: #f5f5f5; color: #000; border-color: #999; }
+  .tag { background: #eee; color: #000; }
+  table, th, td, .finding, figure.evidence-img img { border-color: #999; }
 }
 "#;
 
@@ -268,7 +314,18 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput, l: &Labels) {
             meta.join(" &middot; ")
         ));
     }
-    if !f.cvss_vector.is_empty() {
+    // CVSS: prefer the decoded metric grid; fall back to the raw vector string.
+    if !f.cvss_metrics.is_empty() {
+        out.push_str("<dl class=\"cvss\">\n");
+        for m in &f.cvss_metrics {
+            out.push_str(&format!(
+                "<dt>{}</dt><dd>{}</dd>\n",
+                esc(&m.label),
+                esc(&m.value)
+            ));
+        }
+        out.push_str("</dl>\n");
+    } else if !f.cvss_vector.is_empty() {
         out.push_str(&format!(
             "<div class=\"meta\"><code>{}</code></div>\n",
             esc(&f.cvss_vector)
@@ -390,9 +447,10 @@ fn facet(out: &mut String, label: &str, body: &str) {
     }
 }
 
-/// Emit an escaped paragraph (preserving line breaks).
+/// Emit a prose block, rendering its Markdown to sanitized HTML.
 fn para(out: &mut String, body: &str) {
-    out.push_str(&format!("<p>{}</p>\n", esc(body).replace('\n', "<br>")));
+    out.push_str(&md_to_html(body));
+    out.push('\n');
 }
 
 /// Emit an escaped fenced code block only when non-empty.
@@ -441,6 +499,46 @@ mod tests {
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
             )
             .unwrap()
+    }
+
+    #[test]
+    fn prose_markdown_renders_and_raw_html_is_dropped() {
+        let mut finding = sample_finding();
+        // Markdown + an embedded raw <script> that must NOT survive.
+        finding.description.summary = "Be **careful** here.<script>alert(1)</script>".to_string();
+        let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
+        let html = to_html(&doc);
+        assert!(
+            html.contains("<strong>careful</strong>"),
+            "bold should render"
+        );
+        // Raw inline HTML from prose is dropped (not passed through, not escaped
+        // into a literal tag either — the element simply does not appear).
+        assert!(
+            !html.contains("<script>alert(1)"),
+            "raw html must be dropped"
+        );
+    }
+
+    #[test]
+    fn print_media_block_present() {
+        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let html = to_html(&doc);
+        assert!(html.contains("@media print"), "print stylesheet missing");
+    }
+
+    #[test]
+    fn cvss_vector_decoded_into_grid() {
+        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let html = to_html(&doc);
+        // The sample finding's v3.1 vector decodes to a labelled grid.
+        assert!(html.contains("<dl class=\"cvss\">"), "cvss grid missing");
+        assert!(html.contains("<dt>Attack vector</dt><dd>Network</dd>"));
+        // The raw vector string should no longer be shown when decoded.
+        assert!(
+            !html.contains("CVSS:3.1/AV:N"),
+            "raw vector should be replaced"
+        );
     }
 
     #[test]

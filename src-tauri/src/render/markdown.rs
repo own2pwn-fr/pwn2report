@@ -142,7 +142,13 @@ fn push_finding(
     if !meta.is_empty() {
         out.push_str(&format!("_{}_\n\n", meta.join(" · ")));
     }
-    if !f.cvss_vector.is_empty() {
+    // CVSS: prefer the decoded metric grid; fall back to the raw vector.
+    if !f.cvss_metrics.is_empty() {
+        for m in &f.cvss_metrics {
+            out.push_str(&format!("- **{}:** {}\n", m.label, m.value));
+        }
+        out.push('\n');
+    } else if !f.cvss_vector.is_empty() {
         out.push_str(&format!("`{}`\n\n", f.cvss_vector));
     }
 
@@ -272,6 +278,15 @@ mod tests {
         // code blocks for snippet and patch are fenced.
         assert!(md.contains("```\nSELECT * FROM users"));
         assert!(md.contains("CWE-89"));
+    }
+
+    #[test]
+    fn markdown_decodes_cvss_vector_into_metric_list() {
+        let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
+        let md = to_markdown(&doc);
+        assert!(md.contains("- **Attack vector:** Network"));
+        // Raw vector string is replaced by the decoded list.
+        assert!(!md.contains("`CVSS:3.1/AV:N"));
     }
 
     #[test]

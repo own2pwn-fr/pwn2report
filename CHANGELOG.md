@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Rendering quality
+- **HTML exports render Markdown prose** (via pulldown-cmark, raw-HTML stripped) instead of showing
+  literal `**bold**`/lists; added a `@media print` light stylesheet.
+- **PDF: Table of Contents + real numbered headings** (findings are now proper `heading(level:2)` with
+  a severity-badge prefix, so they appear in the outline), a **findings summary table**, and a
+  **severity distribution bar** in the overview.
+- **CVSS decoded**: a v3.1/v4.0 vector parser renders a localized labelled metric grid (+ severity-colored
+  score) instead of the raw vector string.
+- **Code blocks** are breakable and wrap long lines; **images** are height-constrained with numbered
+  figure captions.
+- **MD→Typst converter** gained tables, blockquotes and nested lists, and stops over-escaping ordinary
+  text (`-`/`'`/`/` no longer backslashed mid-word).
+- **DOCX `reference.docx` rebranded**: violet accent (#7c5cff), Inter headings/body, JetBrains Mono code —
+  so Word output matches the PDF/HTML instead of stock pandoc styling.
+
 ### Security hardening
 - **Content-Security-Policy** set (was `null`): locks script/connect/img/style sources so a DOM-injection
   bug in the webview can't pivot to the unlocked-vault IPC surface.

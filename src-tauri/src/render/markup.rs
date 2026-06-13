@@ -25,8 +25,10 @@
 //!   * `*italic*` / `_italic_` → `_italic_`;
 //!   * inline `` `code` `` → Typst `raw`;
 //!   * fenced ```` ```lang … ``` ```` → Typst raw block with language;
-//!   * unordered lists (`- ` / `* ` / `+ `) → `- `;
-//!   * ordered lists (`1.`) → `+ `;
+//!   * unordered lists (`- ` / `* ` / `+ `) → `- `, ordered lists (`1.`) → `+ `,
+//!     with indentation-based **nesting**;
+//!   * blockquotes (`> …`) → `#quote(block: true)[…]`;
+//!   * GFM tables (`| a | b |` + a `| --- |` delimiter row) → Typst `#table(…)`;
 //!   * links `[text](url)` → `#link("url")[text]`;
 //!   * paragraphs (blank line) and hard line breaks (trailing two spaces or a
 //!     lone newline inside a paragraph).
@@ -38,9 +40,29 @@
 /// backslash-escaped when they appear in a literal text run. Backslash itself is
 /// first in the list so the replace pass escapes it before introducing new
 /// backslashes for the others.
+///
+/// This is the *narrowed* set: it covers only the truly structural characters.
+/// Characters like `-`, `+`, `/`, `'`, `"` are NOT escaped inside normal text
+/// (they render literally in Typst markup mode); `-`/`+` are escaped only when
+/// they begin a line (where they would otherwise start a Typst list) — see
+/// [`escape_line_start`].
 const TYPST_SPECIAL: &[char] = &[
-    '\\', '#', '$', '*', '_', '`', '<', '>', '@', '[', ']', '=', '-', '+', '/', '~', '"', '\'',
+    '\\', '#', '$', '*', '_', '`', '<', '>', '@', '[', ']', '=', '~',
 ];
+
+/// Escape a leading `-`/`+`/`/` `+` (list / term markers) at the very start of a
+/// rendered paragraph line so it isn't reinterpreted as a Typst list/term item.
+/// Operates on already-rendered inline markup; only the first character matters.
+fn escape_line_start(rendered: &str) -> String {
+    let mut chars = rendered.chars();
+    match chars.next() {
+        // `- ` / `+ ` would start a list; `/ ` would start a term-list item.
+        Some(c @ ('-' | '+' | '/')) if rendered[c.len_utf8()..].starts_with(' ') => {
+            format!("\\{rendered}")
+        }
+        _ => rendered.to_string(),
+    }
+}
 
 /// Escape every Typst-special character in a literal text run so it renders
 /// verbatim and can never be reinterpreted as Typst markup.
@@ -132,24 +154,38 @@ pub fn md_to_typst(md: &str) -> String {
             continue;
         }
 
-        // Unordered list block.
-        if unordered_marker(trimmed).is_some() {
+        // Blockquote block (`> ...`).
+        if is_blockquote(trimmed) {
             if need_para_break {
                 out.push_str("\n\n");
             }
-            let (block, next) = collect_unordered_list(&lines, i);
+            let (block, next) = collect_blockquote(&lines, i);
             out.push_str(&block);
             i = next;
             need_para_break = true;
             continue;
         }
 
-        // Ordered list block.
-        if ordered_marker(trimmed).is_some() {
+        // GFM table block (a `|`-delimited header row followed by a delimiter
+        // row of dashes). Checked before lists so a `| --- |` row isn't mistaken
+        // for anything else.
+        if is_table_start(&lines, i) {
             if need_para_break {
                 out.push_str("\n\n");
             }
-            let (block, next) = collect_ordered_list(&lines, i);
+            let (block, next) = collect_table(&lines, i);
+            out.push_str(&block);
+            i = next;
+            need_para_break = true;
+            continue;
+        }
+
+        // List block (unordered or ordered), with indentation-based nesting.
+        if unordered_marker(trimmed).is_some() || ordered_marker(trimmed).is_some() {
+            if need_para_break {
+                out.push_str("\n\n");
+            }
+            let (block, next) = collect_list(&lines, i, indent_of(line));
             out.push_str(&block);
             i = next;
             need_para_break = true;
@@ -290,46 +326,158 @@ fn ordered_marker(line: &str) -> Option<&str> {
     }
 }
 
-/// Collect a run of unordered-list items into Typst `- ` items.
-fn collect_unordered_list(lines: &[&str], start: usize) -> (String, usize) {
-    let mut out = String::new();
+/// Leading-whitespace width of a line (tabs count as one column — good enough
+/// for nesting comparisons; authored Markdown uses spaces in practice).
+fn indent_of(line: &str) -> usize {
+    line.chars().take_while(|c| *c == ' ' || *c == '\t').count()
+}
+
+/// Collect a (possibly nested) list starting at `start`. `base_indent` is the
+/// indentation of the first item; deeper-indented items recurse into a nested
+/// Typst list, which Typst renders indented. Mixed ordered/unordered items keep
+/// their own marker (`- ` vs `+ `). Returns the rendered block and the index
+/// just past the list.
+fn collect_list(lines: &[&str], start: usize, base_indent: usize) -> (String, usize) {
+    let mut out: Vec<String> = Vec::new();
+    let mut i = start;
+    while i < lines.len() {
+        let line = lines[i];
+        let t = line.trim_start();
+        if t.trim().is_empty() {
+            break; // blank line ends the list block
+        }
+        let indent = indent_of(line);
+        if indent < base_indent {
+            break; // dedent → list belongs to an outer level
+        }
+        let marker = list_marker(t);
+        let Some((ordered, content)) = marker else {
+            break; // not a list item → list ends
+        };
+        let prefix = if ordered { "+ " } else { "- " };
+        let mut item = format!("{prefix}{}", render_inline(content.trim()));
+        i += 1;
+        // Gather any deeper-indented children of this item into a nested list.
+        if i < lines.len() {
+            let next = lines[i];
+            let nt = next.trim_start();
+            if !nt.trim().is_empty() && indent_of(next) > indent && list_marker(nt).is_some() {
+                let (nested, next_i) = collect_list(lines, i, indent_of(next));
+                // Indent the nested block under the current item.
+                for nl in nested.lines() {
+                    item.push('\n');
+                    item.push_str("  ");
+                    item.push_str(nl);
+                }
+                i = next_i;
+            }
+        }
+        out.push(item);
+    }
+    (out.join("\n"), i)
+}
+
+/// Classify a list-item line → `(is_ordered, content)`.
+fn list_marker(line: &str) -> Option<(bool, &str)> {
+    if let Some(c) = unordered_marker(line) {
+        Some((false, c))
+    } else {
+        ordered_marker(line).map(|c| (true, c))
+    }
+}
+
+/// Whether a (trimmed) line opens a blockquote.
+fn is_blockquote(line: &str) -> bool {
+    line.starts_with('>')
+}
+
+/// Collect a run of blockquote lines (`> ...`) into a Typst `#quote(block: true)`
+/// containing the inner content rendered as markup. Nested quote markers are
+/// stripped one level (kept literal beyond that).
+fn collect_blockquote(lines: &[&str], start: usize) -> (String, usize) {
+    let mut inner: Vec<String> = Vec::new();
     let mut i = start;
     while i < lines.len() {
         let t = lines[i].trim_start();
-        if let Some(content) = unordered_marker(t) {
-            out.push_str("- ");
-            out.push_str(&render_inline(content.trim()));
-            out.push('\n');
-            i += 1;
-        } else {
+        if !is_blockquote(t) {
             break;
         }
+        // Strip the leading '>' and an optional following space.
+        let rest = t[1..].strip_prefix(' ').unwrap_or(&t[1..]);
+        inner.push(rest.to_string());
+        i += 1;
     }
-    // Trim the trailing newline so paragraph spacing is handled by the caller.
-    if out.ends_with('\n') {
-        out.pop();
-    }
+    // Render the quoted lines as their own mini-document so inline markup,
+    // line-breaks etc. work, then wrap in a Typst block quote.
+    let body = md_to_typst(&inner.join("\n"));
+    let out = format!("#quote(block: true)[{body}]");
     (out, i)
 }
 
-/// Collect a run of ordered-list items into Typst `+ ` items (Typst auto-numbers).
-fn collect_ordered_list(lines: &[&str], start: usize) -> (String, usize) {
-    let mut out = String::new();
-    let mut i = start;
+/// Whether the lines starting at `start` form a GFM table: a header row that
+/// contains a `|`, immediately followed by a delimiter row of `|`, `-`, `:`,
+/// spaces only (with at least one `-`).
+fn is_table_start(lines: &[&str], start: usize) -> bool {
+    if start + 1 >= lines.len() {
+        return false;
+    }
+    let header = lines[start].trim();
+    let delim = lines[start + 1].trim();
+    if !header.contains('|') {
+        return false;
+    }
+    if !delim.contains('-') {
+        return false;
+    }
+    delim
+        .chars()
+        .all(|c| c == '|' || c == '-' || c == ':' || c == ' ')
+}
+
+/// Split a table row into trimmed cell strings, ignoring the optional leading /
+/// trailing pipe.
+fn table_cells(row: &str) -> Vec<&str> {
+    let row = row.trim();
+    let row = row.strip_prefix('|').unwrap_or(row);
+    let row = row.strip_suffix('|').unwrap_or(row);
+    row.split('|').map(|c| c.trim()).collect()
+}
+
+/// Collect a GFM table into a Typst `table(...)`. The header row becomes bold
+/// cells; the delimiter row is consumed; body rows follow until a blank/non-row
+/// line. Cell content is rendered as inline markup.
+fn collect_table(lines: &[&str], start: usize) -> (String, usize) {
+    let header = table_cells(lines[start]);
+    let cols = header.len().max(1);
+    let mut i = start + 2; // skip header + delimiter
+    let mut body: Vec<Vec<&str>> = Vec::new();
     while i < lines.len() {
-        let t = lines[i].trim_start();
-        if let Some(content) = ordered_marker(t) {
-            out.push_str("+ ");
-            out.push_str(&render_inline(content.trim()));
-            out.push('\n');
-            i += 1;
-        } else {
+        let t = lines[i].trim();
+        if t.is_empty() || !t.contains('|') {
             break;
         }
+        body.push(table_cells(lines[i]));
+        i += 1;
     }
-    if out.ends_with('\n') {
-        out.pop();
+
+    let mut out = String::new();
+    out.push_str(&format!("#table(\n  columns: {cols},\n"));
+    // Header cells (bold).
+    out.push_str("  ");
+    for cell in &header {
+        out.push_str(&format!("[*{}*], ", render_inline(cell)));
     }
+    out.push('\n');
+    // Body rows, padding/truncating to the column count.
+    for row in &body {
+        out.push_str("  ");
+        for c in 0..cols {
+            let cell = row.get(c).copied().unwrap_or("");
+            out.push_str(&format!("[{}], ", render_inline(cell)));
+        }
+        out.push('\n');
+    }
+    out.push(')');
     (out, i)
 }
 
@@ -350,13 +498,15 @@ fn collect_paragraph(lines: &[&str], start: usize) -> (String, usize) {
             || atx_heading(t).is_some()
             || unordered_marker(t).is_some()
             || ordered_marker(t).is_some()
+            || is_blockquote(t)
+            || is_table_start(lines, i)
         {
             break;
         }
         // A trailing "  " (two spaces) is a Markdown hard break — but since we
         // already join every wrapped line with a break, we just trim trailing
         // whitespace here.
-        parts.push(render_inline(raw.trim()));
+        parts.push(escape_line_start(&render_inline(raw.trim())));
         i += 1;
     }
     // Join with a Typst linebreak so soft-wrapped source lines stay on their own
@@ -587,13 +737,40 @@ mod tests {
 
     #[test]
     fn plain_text_is_escaped() {
-        // All special chars must be backslash-escaped so they render literally.
+        // Structural special chars must be backslash-escaped so they render
+        // literally. The narrowed set no longer escapes `/` inside text.
         let out = md_to_typst("price is $5 #1 a=b c/d ~x");
         assert!(out.contains("\\$5"));
         assert!(out.contains("\\#1"));
         assert!(out.contains("a\\=b"));
-        assert!(out.contains("c\\/d"));
         assert!(out.contains("\\~x"));
+        // `/` mid-text is NOT escaped any more (it renders literally in Typst).
+        assert!(out.contains("c/d"), "got {out:?}");
+        assert!(
+            !out.contains("c\\/d"),
+            "slash should not be escaped: {out:?}"
+        );
+    }
+
+    #[test]
+    fn narrowed_escaping_leaves_quotes_dashes_plus_literal() {
+        // Inside normal text, quotes / apostrophes / dashes / plus / slash are
+        // rendered literally (no backslash), reducing visual noise in the PDF.
+        let out = md_to_typst(r#"it's a "quoted" a-b c+d e/f"#);
+        assert!(!out.contains('\\'), "no escaping expected in: {out:?}");
+        assert!(out.contains("it's a \"quoted\" a-b c+d e/f"), "got {out:?}");
+    }
+
+    #[test]
+    fn escape_line_start_guards_leading_list_markers() {
+        // A rendered paragraph line beginning with a list/term marker is escaped
+        // so it can't be reinterpreted as a Typst list/term item.
+        assert_eq!(escape_line_start("- x"), "\\- x");
+        assert_eq!(escape_line_start("+ y"), "\\+ y");
+        assert_eq!(escape_line_start("/ term"), "\\/ term");
+        // No space after the marker → not a list → left alone.
+        assert_eq!(escape_line_start("-5 degrees"), "-5 degrees");
+        assert_eq!(escape_line_start("normal text"), "normal text");
     }
 
     #[test]
@@ -605,7 +782,9 @@ mod tests {
         // (preceded by a backslash). The output must not contain a bare,
         // unescaped construct opener that could break compilation. We assert the
         // dangerous singletons are escaped.
-        for needle in ["\\$", "\\`", "\\<", "\\>", "\\@", "\\=", "\\~", "\\\""] {
+        // The structural singletons are still escaped (the narrowed set keeps
+        // these). `"` is no longer escaped (it's harmless literal text in markup).
+        for needle in ["\\$", "\\`", "\\<", "\\>", "\\@", "\\=", "\\~"] {
             assert!(out.contains(needle), "missing escape {needle:?} in {out:?}");
         }
         // No unescaped function-call sigil leaking through as raw markup other
@@ -790,6 +969,68 @@ mod tests {
         assert!(out.contains("#link(\"https://x\")[link]"));
         assert!(out.contains("- item `a`"));
         assert!(out.contains("```rust\nlet x = 1;\n```"));
+    }
+
+    #[test]
+    fn gfm_table_becomes_typst_table() {
+        let md = "| Name | Role |\n| --- | --- |\n| Ada | Eng |\n| Bo | PM |";
+        let out = md_to_typst(md);
+        assert!(out.contains("#table("), "got {out:?}");
+        assert!(out.contains("columns: 2"), "got {out:?}");
+        // Header cells are bold.
+        assert!(
+            out.contains("[*Name*]") && out.contains("[*Role*]"),
+            "got {out:?}"
+        );
+        // Body cells present.
+        assert!(out.contains("[Ada]") && out.contains("[PM]"), "got {out:?}");
+    }
+
+    #[test]
+    fn table_ragged_rows_are_padded() {
+        let md = "| A | B |\n|---|---|\n| only-one |";
+        let out = md_to_typst(md);
+        assert!(out.contains("columns: 2"), "got {out:?}");
+        assert!(out.contains("[only-one]"), "got {out:?}");
+        // Missing second cell padded with an empty content block.
+        assert!(
+            out.contains("[], ") || out.contains("[only-one], [], "),
+            "got {out:?}"
+        );
+    }
+
+    #[test]
+    fn blockquote_becomes_typst_quote() {
+        let out = md_to_typst("> a quoted line\n> second line");
+        assert!(out.contains("#quote(block: true)["), "got {out:?}");
+        assert!(out.contains("a quoted line"), "got {out:?}");
+    }
+
+    #[test]
+    fn blockquote_inner_markup_is_rendered() {
+        let out = md_to_typst("> see **this** and `code`");
+        assert!(out.contains("#quote(block: true)["), "got {out:?}");
+        assert!(out.contains("*this*"), "got {out:?}");
+        assert!(out.contains("`code`"), "got {out:?}");
+    }
+
+    #[test]
+    fn nested_list_indents_under_parent() {
+        let md = "- top\n  - child\n  - child2\n- top2";
+        let out = md_to_typst(md);
+        // Parent items at column 0, children indented two spaces under the parent.
+        assert!(out.contains("- top"), "got {out:?}");
+        assert!(out.contains("  - child"), "got {out:?}");
+        assert!(out.contains("- top2"), "got {out:?}");
+    }
+
+    #[test]
+    fn mixed_nested_ordered_in_unordered() {
+        let md = "- step\n  1. first\n  2. second";
+        let out = md_to_typst(md);
+        assert!(out.contains("- step"), "got {out:?}");
+        assert!(out.contains("  + first"), "got {out:?}");
+        assert!(out.contains("  + second"), "got {out:?}");
     }
 
     #[test]

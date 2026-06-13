@@ -4,6 +4,7 @@
 //! added later; only the Typst-backed PDF renderer exists today.
 
 pub mod content_model;
+pub mod cvss;
 pub mod docx;
 pub mod html;
 pub mod labels;
@@ -154,12 +155,13 @@ mod tests {
         }
     }
 
-    /// The md/html/docx renderers must keep receiving RAW markdown prose (the
-    /// Typst conversion must not leak into the shared `ReportDocument` IR).
+    /// The Markdown renderer keeps prose as RAW markdown (the Typst conversion
+    /// must not leak into the shared `ReportDocument` IR); the HTML renderer now
+    /// renders prose Markdown to real HTML elements (still never Typst markup).
     #[test]
     fn other_renderers_keep_raw_markdown() {
         let mut finding = sample_finding();
-        finding.description.summary = "A **bold** point with `code`.".to_string();
+        finding.description.summary = "A **bold** point with `code`.\n\n- one\n- two".to_string();
         finding.remediation.fix = "Use [docs](https://x).".to_string();
         let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
 
@@ -175,11 +177,24 @@ mod tests {
         );
         assert!(!md.contains("#link("), "md must NOT contain typst markup");
 
-        // HTML renderer: prose is HTML-escaped, NOT converted to typst markup.
+        // HTML renderer: prose Markdown becomes real HTML, never raw markdown
+        // characters or Typst markup.
         let html = to_html(&doc);
         assert!(
-            html.contains("**bold**"),
-            "html lost raw markdown asterisks"
+            html.contains("<strong>bold</strong>"),
+            "html should render bold as <strong>"
+        );
+        assert!(
+            html.contains("<ul>") && html.contains("<li>"),
+            "html should render lists"
+        );
+        assert!(
+            html.contains("<a href=\"https://x\">docs</a>"),
+            "html should render links as <a>"
+        );
+        assert!(
+            !html.contains("**bold**"),
+            "html must not keep raw markdown"
         );
         assert!(
             !html.contains("#link("),

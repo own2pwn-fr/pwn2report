@@ -15,6 +15,7 @@ use derive_typst_intoval::{IntoDict, IntoValue};
 use typst::foundations::{Bytes, Dict, IntoValue as _};
 
 use crate::models::{Finding, Report, ReportType, Severity};
+use crate::render::cvss;
 use crate::render::labels::Labels;
 use crate::render::markup::md_to_typst;
 
@@ -85,6 +86,10 @@ pub struct FindingInput {
     pub cvss_vector: String,
     /// Pre-formatted score string ("" when absent).
     pub cvss_score: String,
+    /// Decoded CVSS base metrics (localized label/value pairs). Empty when the
+    /// vector is absent or unparseable — renderers then fall back to the raw
+    /// vector string.
+    pub cvss_metrics: Vec<CvssMetricInput>,
     pub triage_status: String,
     // description facets
     pub summary: String,
@@ -111,6 +116,15 @@ pub struct FindingInput {
     // misc
     pub refs: Vec<String>,
     pub tags: Vec<String>,
+}
+
+/// A single decoded CVSS base metric, as a localized `(label, value)` pair.
+/// Carried as a struct (not a tuple) so the `IntoDict`/`IntoValue` derive can
+/// inject it into the Typst template dict the themes index (`m.label`/`m.value`).
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct CvssMetricInput {
+    pub label: String,
+    pub value: String,
 }
 
 /// A single evidence image, flattened for the renderers.
@@ -184,6 +198,8 @@ pub struct TypstFindingInput {
     pub cve: String,
     pub cvss_vector: String,
     pub cvss_score: String,
+    /// Decoded CVSS base metrics (localized) — copied verbatim from the raw IR.
+    pub cvss_metrics: Vec<CvssMetricInput>,
     pub triage_status: String,
     // description facets — converted Markdown → Typst markup
     pub summary: String,
@@ -254,6 +270,7 @@ impl TypstFindingInput {
             cve: f.cve.clone(),
             cvss_vector: f.cvss_vector.clone(),
             cvss_score: f.cvss_score.clone(),
+            cvss_metrics: f.cvss_metrics.clone(),
             triage_status: f.triage_status.clone(),
             summary: md_to_typst(&f.summary),
             root_cause: md_to_typst(&f.root_cause),
@@ -292,7 +309,7 @@ impl FindingInput {
     /// Project a DB `Finding` (plus its evidence images) into the
     /// template-friendly shape. `images` is the `(caption, mime, bytes)` list
     /// for this finding, already ordered; an empty slice yields no images.
-    fn from_finding(f: &Finding, images: &[ImageSource]) -> Self {
+    fn from_finding(f: &Finding, images: &[ImageSource], labels: &Labels) -> Self {
         let evidence = f.evidence.as_ref();
         let evidence_lines = evidence
             .map(|e| match (e.start_line, e.end_line) {
@@ -304,6 +321,15 @@ impl FindingInput {
 
         let poc = f.poc.as_ref();
 
+        let cvss_vector = f.cvss_vector.clone().unwrap_or_default();
+        let cvss_metrics = cvss::decode(&cvss_vector, labels)
+            .into_iter()
+            .map(|(label, value)| CvssMetricInput {
+                label: label.to_string(),
+                value: value.to_string(),
+            })
+            .collect();
+
         FindingInput {
             title: f.title.clone(),
             severity: f.severity.as_str().to_string(),
@@ -311,8 +337,9 @@ impl FindingInput {
             kind: format!("{:?}", f.kind).to_lowercase(),
             cwe: f.cwe.clone().unwrap_or_default(),
             cve: f.cve.clone().unwrap_or_default(),
-            cvss_vector: f.cvss_vector.clone().unwrap_or_default(),
+            cvss_vector,
             cvss_score: f.cvss_score.map(|s| format!("{s:.1}")).unwrap_or_default(),
+            cvss_metrics,
             triage_status: format!("{:?}", f.triage_status).to_lowercase(),
             summary: f.description.summary.clone(),
             root_cause: f.description.root_cause.clone(),
@@ -406,7 +433,7 @@ pub fn build_document(
             .iter()
             .map(|f| {
                 let imgs = images.get(&f.id).map(Vec::as_slice).unwrap_or(&[]);
-                FindingInput::from_finding(f, imgs)
+                FindingInput::from_finding(f, imgs, &labels)
             })
             .collect(),
     }
