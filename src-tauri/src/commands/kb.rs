@@ -14,7 +14,7 @@ static BUNDLED_CATALOG: &str = include_str!("../../resources/kb/catalog.json");
 
 #[tauri::command]
 pub fn kb_list(state: State<'_, AppState>) -> AppResult<Vec<KbEntry>> {
-    state.with_conn(|conn| db::kb::list(conn))
+    state.with_conn(db::kb::list)
 }
 
 #[tauri::command]

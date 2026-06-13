@@ -15,7 +15,7 @@
 // Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
-#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
+#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
 
 #let doc = inputs
 
@@ -45,7 +45,7 @@
 // ---------------------------------------------------------------------------
 #if doc.exec_summary != "" {
   heading(level: 1, "Engagement Summary")
-  block(doc.exec_summary)
+  block(prose(doc.exec_summary))
   v(0.5em)
 }
 
@@ -61,11 +61,11 @@
 // ---------------------------------------------------------------------------
 #if doc.scope != "" {
   heading(level: 1, "Rules of Engagement")
-  block(doc.scope)
+  block(prose(doc.scope))
 }
 #if doc.methodology != "" {
   heading(level: 1, "Approach")
-  block(doc.methodology)
+  block(prose(doc.methodology))
 }
 
 // ---------------------------------------------------------------------------

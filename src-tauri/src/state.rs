@@ -48,10 +48,7 @@ impl AppState {
 
     /// Whether a vault is currently unlocked.
     pub fn is_unlocked(&self) -> bool {
-        self.vault
-            .lock()
-            .expect("vault mutex poisoned")
-            .is_some()
+        self.vault.lock().expect("vault mutex poisoned").is_some()
     }
 
     /// Install a freshly opened connection as the active vault.

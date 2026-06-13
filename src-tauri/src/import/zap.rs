@@ -8,7 +8,9 @@ use serde_json::Value;
 
 use super::{normalize_cwe, severity_from_label};
 use crate::error::{AppError, AppResult};
-use crate::models::{Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding, Severity};
+use crate::models::{
+    Evidence, FindingDescription, FindingKind, FindingRemediation, NewFinding, Severity,
+};
 
 /// ZAP `riskcode` (0=info..3=high) → severity. Falls back to parsing
 /// `riskdesc` text, else medium.
@@ -52,7 +54,10 @@ fn strip_html(s: &str) -> String {
 }
 
 fn str_field(alert: &Value, key: &str) -> Option<String> {
-    alert.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    alert
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn alert_to_finding(alert: &Value) -> NewFinding {
@@ -66,8 +71,12 @@ fn alert_to_finding(alert: &Value) -> NewFinding {
         alert.get("riskdesc").and_then(|v| v.as_str()),
     );
 
-    let summary = str_field(alert, "desc").map(|s| strip_html(&s)).unwrap_or_default();
-    let fix = str_field(alert, "solution").map(|s| strip_html(&s)).unwrap_or_default();
+    let summary = str_field(alert, "desc")
+        .map(|s| strip_html(&s))
+        .unwrap_or_default();
+    let fix = str_field(alert, "solution")
+        .map(|s| strip_html(&s))
+        .unwrap_or_default();
 
     let mut references: Vec<String> = Vec::new();
     if let Some(reference) = str_field(alert, "reference") {
@@ -141,11 +150,7 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
     let sites: Vec<&Value> = match doc.get("site") {
         Some(Value::Array(a)) => a.iter().collect(),
         Some(obj @ Value::Object(_)) => vec![obj],
-        _ => {
-            return Err(AppError::Import(
-                "ZAP report has no `site` entries".into(),
-            ))
-        }
+        _ => return Err(AppError::Import("ZAP report has no `site` entries".into())),
     };
 
     let mut findings = Vec::new();

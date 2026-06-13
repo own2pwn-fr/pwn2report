@@ -8,14 +8,14 @@
 mod ai;
 mod commands;
 mod db;
+#[cfg(test)]
+mod e2e_tests;
 mod error;
 mod import;
 mod models;
 mod render;
 mod state;
 mod sync;
-#[cfg(test)]
-mod e2e_tests;
 #[cfg(test)]
 mod test_fixtures;
 mod vault;

@@ -18,19 +18,15 @@ use crate::error::{AppError, AppResult};
 /// convention and the frontend's discriminated union.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AiProvider {
     /// A local Ollama server (default). Nothing leaves the machine.
+    #[default]
     Ollama,
     /// Any OpenAI-compatible `/v1/chat/completions` endpoint.
     Openai,
     /// Anthropic's `/v1/messages` API.
     Anthropic,
-}
-
-impl Default for AiProvider {
-    fn default() -> Self {
-        AiProvider::Ollama
-    }
 }
 
 /// Persisted AI configuration. The API key is **not** here (keychain only).
@@ -88,8 +84,7 @@ pub fn load(app: &AppHandle) -> AppResult<AiConfig> {
 pub fn save(app: &AppHandle, cfg: &AiConfig) -> AppResult<()> {
     let path = config_path(app)?;
     let json = serde_json::to_string_pretty(cfg)?;
-    std::fs::write(&path, json)
-        .map_err(|e| AppError::Io(format!("cannot write ai.json: {e}")))?;
+    std::fs::write(&path, json).map_err(|e| AppError::Io(format!("cannot write ai.json: {e}")))?;
     Ok(())
 }
 

@@ -9,7 +9,7 @@ use crate::state::AppState;
 
 #[tauri::command]
 pub fn list_reports(state: State<'_, AppState>) -> AppResult<Vec<ReportSummary>> {
-    state.with_conn(|conn| db::reports::list(conn))
+    state.with_conn(db::reports::list)
 }
 
 #[tauri::command]

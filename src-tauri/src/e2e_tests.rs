@@ -2,7 +2,6 @@
 //! a genuine on-disk SQLCipher vault: create → CRUD → render (all formats) →
 //! import → sync round-trip between two vaults → rekey → backup. These catch
 //! wiring bugs that unit tests on isolated functions miss.
-#![cfg(test)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,7 +19,11 @@ use crate::vault::connection;
 
 fn tmp(name: &str) -> PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("pwn2report-e2e-{}-{}.db", name, uuid::Uuid::new_v4()));
+    p.push(format!(
+        "pwn2report-e2e-{}-{}.db",
+        name,
+        uuid::Uuid::new_v4()
+    ));
     p
 }
 
@@ -128,7 +131,10 @@ fn e2e_sync_roundtrip_between_two_vaults() {
     // Export → encrypt → decrypt → parse.
     let bundle_json = SyncBundle::snapshot(&src).unwrap().to_json().unwrap();
     let cipher = crypto::encrypt("sync-secret", &bundle_json).unwrap();
-    assert!(crypto::decrypt("WRONG", &cipher).is_err(), "wrong passphrase must fail");
+    assert!(
+        crypto::decrypt("WRONG", &cipher).is_err(),
+        "wrong passphrase must fail"
+    );
     let plain = crypto::decrypt("sync-secret", &cipher).unwrap();
     let bundle = SyncBundle::from_json(&plain).unwrap();
 

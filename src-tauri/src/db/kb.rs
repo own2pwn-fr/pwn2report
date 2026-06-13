@@ -64,9 +64,11 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<KbEntry>> {
 /// Whether a KB entry with this id exists.
 pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
     let found: bool = conn
-        .query_row("SELECT 1 FROM kb_entries WHERE id = ?1", params![id], |_| {
-            Ok(true)
-        })
+        .query_row(
+            "SELECT 1 FROM kb_entries WHERE id = ?1",
+            params![id],
+            |_| Ok(true),
+        )
         .optional()?
         .unwrap_or(false);
     Ok(found)

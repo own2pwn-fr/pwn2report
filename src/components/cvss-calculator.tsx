@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // CVSS version handled by the calculator.
-type CvssVersion = "3.1" | "4.0";
+export type CvssVersion = "3.1" | "4.0";
 
 // A base-metric definition: its key, a label, and the ordered list of allowed
 // values (value code + human label). The first value is the default.
@@ -195,25 +195,25 @@ const METRICS_40: MetricDef[] = [
 
 const PREFIX: Record<CvssVersion, string> = { "3.1": "CVSS:3.1", "4.0": "CVSS:4.0" };
 
-function metricsFor(version: CvssVersion): MetricDef[] {
+export function metricsFor(version: CvssVersion): MetricDef[] {
   return version === "3.1" ? METRICS_31 : METRICS_40;
 }
 
-function defaultSelections(version: CvssVersion): Record<string, string> {
+export function defaultSelections(version: CvssVersion): Record<string, string> {
   const out: Record<string, string> = {};
   for (const m of metricsFor(version)) out[m.key] = m.values[0].code;
   return out;
 }
 
 /** Detect the version from a CVSS vector string prefix. */
-function versionOf(vector: string): CvssVersion | null {
+export function versionOf(vector: string): CvssVersion | null {
   if (vector.startsWith("CVSS:4.0")) return "4.0";
   if (vector.startsWith("CVSS:3.1")) return "3.1";
   return null;
 }
 
 /** Parse a vector into per-metric selections for the given version. */
-function selectionsFromVector(version: CvssVersion, vector: string): Record<string, string> {
+export function selectionsFromVector(version: CvssVersion, vector: string): Record<string, string> {
   const out = defaultSelections(version);
   const defs = metricsFor(version);
   for (const seg of vector.split("/")) {
@@ -225,13 +225,13 @@ function selectionsFromVector(version: CvssVersion, vector: string): Record<stri
 }
 
 /** Build the vector string from selections (base metrics only). */
-function buildVector(version: CvssVersion, sel: Record<string, string>): string {
+export function buildVector(version: CvssVersion, sel: Record<string, string>): string {
   const segs = metricsFor(version).map((m) => `${m.key}:${sel[m.key]}`);
   return `${PREFIX[version]}/${segs.join("/")}`;
 }
 
 /** Compute base score + severity for a complete base vector. */
-function compute(version: CvssVersion, vector: string): { score: number; severity: string } {
+export function compute(version: CvssVersion, vector: string): { score: number; severity: string } {
   if (version === "3.1") {
     const c = new CVSS31(vector);
     const score = c.BaseScore();

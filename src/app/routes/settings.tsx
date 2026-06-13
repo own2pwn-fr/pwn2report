@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Upload,
   Download,
+  AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -276,7 +277,28 @@ function AiSection() {
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground">{t("settings.ai.privacyNote")}</p>
+        {cloudProvider ? (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-md border border-[hsl(var(--sev-high))] bg-[hsl(var(--sev-high)/0.1)] p-3"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[hsl(var(--sev-high))]" />
+            <div className="space-y-1 text-xs">
+              <p className="font-medium text-[hsl(var(--sev-high))]">
+                {t("settings.ai.cloudWarningTitle")}
+              </p>
+              <p className="text-muted-foreground">{t("settings.ai.cloudWarningBody")}</p>
+              <p className="text-muted-foreground">{t("settings.ai.cloudWarningLocalHint")}</p>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="flex items-start gap-3 rounded-md border border-[hsl(var(--sev-low))] bg-[hsl(var(--sev-low)/0.1)] p-3"
+          >
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[hsl(var(--sev-low))]" />
+            <p className="text-xs text-muted-foreground">{t("settings.ai.localNote")}</p>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <Button variant="brand" onClick={handleSave} disabled={saveAi.isPending}>

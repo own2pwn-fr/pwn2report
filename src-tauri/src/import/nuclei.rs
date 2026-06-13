@@ -68,7 +68,10 @@ fn parse_line(line: &str) -> AppResult<Option<NewFinding>> {
     if let Some(m) = &matched {
         refs.push(m.clone());
     }
-    if let Some(arr) = info.and_then(|i| i.get("reference")).and_then(|r| r.as_array()) {
+    if let Some(arr) = info
+        .and_then(|i| i.get("reference"))
+        .and_then(|r| r.as_array())
+    {
         for r in arr {
             if let Some(s) = r.as_str() {
                 refs.push(s.to_string());

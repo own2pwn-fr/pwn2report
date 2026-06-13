@@ -48,11 +48,7 @@ pub fn ai_get_config(app: AppHandle) -> AppResult<AiConfigView> {
 /// store does not roll back the config write — `ai_get_config().has_key` will
 /// simply report `false`, and cloud calls will then error clearly.
 #[tauri::command]
-pub fn ai_set_config(
-    app: AppHandle,
-    config: AiConfig,
-    api_key: Option<String>,
-) -> AppResult<()> {
+pub fn ai_set_config(app: AppHandle, config: AiConfig, api_key: Option<String>) -> AppResult<()> {
     config::save(&app, &config)?;
     match api_key {
         Some(k) if k.is_empty() => {
@@ -90,11 +86,7 @@ pub fn ai_test_connection(app: AppHandle) -> AppResult<String> {
 /// translate actions. Errors clearly if AI is disabled or (for cloud) no key
 /// is stored.
 #[tauri::command]
-pub fn ai_complete(
-    app: AppHandle,
-    system: Option<String>,
-    prompt: String,
-) -> AppResult<String> {
+pub fn ai_complete(app: AppHandle, system: Option<String>, prompt: String) -> AppResult<String> {
     let cfg = config::load(&app)?;
     if !cfg.enabled {
         return Err(AppError::Ai(

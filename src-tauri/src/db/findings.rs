@@ -160,9 +160,8 @@ fn finding_cols(f: &Finding) -> AppResult<FindingCols> {
 
 /// List a report's findings ordered by `sort_order`.
 pub fn list(conn: &Connection, report_id: &str) -> AppResult<Vec<Finding>> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM findings WHERE report_id = ?1 ORDER BY sort_order, created_at",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT * FROM findings WHERE report_id = ?1 ORDER BY sort_order, created_at")?;
     // query_map closure must return rusqlite::Result, so collect rows first.
     let mut rows = stmt.query(params![report_id])?;
     let mut out = Vec::new();

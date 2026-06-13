@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Hardening, packaging & tooling
+- **Markdown rich-text in the PDF**: a compile-safe Markdown→Typst converter renders prose
+  (bold/italic/code/lists/links/headings) in PDF exports; Markdown/HTML/DOCX keep raw text.
+- **Pandoc bundled as a Tauri sidecar** (`externalBin`) with a `scripts/fetch-pandoc.sh` helper;
+  DOCX resolves pandoc from the override env var → the bundled sidecar → `PATH`.
+- **End-to-end integration tests** over a real SQLCipher vault (create → render all formats →
+  import → sync round-trip between two vaults → rekey → backup).
+- **Frontend unit tests** (Vitest) for image/format/IPC helpers and the CVSS calculator; JS
+  bundle split into vendor chunks (no more >500 kB warning).
+- **CI** (GitHub Actions): `cargo fmt`/`clippy -D warnings`/`test` on Linux/macOS/Windows,
+  frontend typecheck/test/build; a tag-triggered **release** workflow (`tauri-action`) with
+  code-signing slots documented.
+- **own2pwn app icon**; explicit privacy warning when a cloud AI provider is selected.
+- Backend is `clippy -D warnings` clean and `rustfmt`-formatted.
+
 ### Added — v4 (end-to-end encrypted sync, local-first)
 - Portable **sync bundle** (`.p2r`): an `age` passphrase-encrypted snapshot of the whole vault
   (reports, findings, KB, evidence images). Move it between devices by any means (USB,
@@ -73,10 +88,8 @@ All notable changes to this project are documented here. The format is based on
 - `/settings` route: change master passphrase, back up the vault, and edit/reset the per-type
   Typst templates in an in-app editor.
 
-### Deferred to a later iteration
-- Markdown rich-text in the PDF (needs a Markdown→Typst conversion; Markdown/HTML exports are
-  already Markdown-native). Pandoc is resolved from `PATH` for now; bundling it as a per-OS
-  sidecar is a packaging-time concern.
+### Still deferred
+- A real-time relay / P2P transport for sync (today: a portable encrypted bundle).
 
 ### Added — v0 technical skeleton
 - Tauri v2 + Vite/React/TypeScript desktop shell (Linux · Windows · macOS).

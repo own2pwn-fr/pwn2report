@@ -93,8 +93,8 @@ mod tests {
         let f = parse("sarif", s).expect("sarif parse");
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].severity, Severity::High); // error -> high
-        // No rule definition for ruleId "R", so the title falls back to the
-        // ruleId and the message text lands in the summary.
+                                                   // No rule definition for ruleId "R", so the title falls back to the
+                                                   // ruleId and the message text lands in the summary.
         assert_eq!(f[0].title, "R");
         assert!(f[0].description.as_ref().unwrap().summary.contains("SQLi"));
     }
@@ -129,7 +129,11 @@ mod tests {
             serde_json::from_str(include_str!("../../resources/kb/catalog.json"))
                 .expect("catalog.json must be valid JSON");
         let arr = cat.as_array().expect("catalog must be an array");
-        assert!(arr.len() >= 12, "expected >=12 KB entries, got {}", arr.len());
+        assert!(
+            arr.len() >= 12,
+            "expected >=12 KB entries, got {}",
+            arr.len()
+        );
         for e in arr {
             let sev = e["severity"].as_str().expect("severity str");
             assert!(

@@ -16,6 +16,31 @@ export default defineConfig(async () => ({
     },
   },
 
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy vendor groups into their own chunks so no single bundle
+        // trips the 500 kB warning and the browser can cache them independently.
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          query: ["@tanstack/react-query"],
+          radix: [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-label",
+            "@radix-ui/react-select",
+            "@radix-ui/react-separator",
+            "@radix-ui/react-switch",
+            "@radix-ui/react-tooltip",
+          ],
+          motion: ["motion"],
+          i18n: ["i18next", "react-i18next"],
+          cvss: ["@pandatix/js-cvss"],
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

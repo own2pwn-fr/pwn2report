@@ -111,11 +111,7 @@ pub fn exists(conn: &Connection, id: &str) -> AppResult<bool> {
 /// merge — NOT the id-generating [`add`]). Evidence images are immutable, so
 /// there is no `update_raw` counterpart. Caller must ensure the parent finding
 /// exists.
-pub fn insert_raw(
-    conn: &Connection,
-    meta: &EvidenceImage,
-    data: &[u8],
-) -> AppResult<()> {
+pub fn insert_raw(conn: &Connection, meta: &EvidenceImage, data: &[u8]) -> AppResult<()> {
     conn.execute(
         r#"
         INSERT INTO evidence_images
@@ -201,11 +197,7 @@ pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
 
 /// Re-assign `sort_order` to match the given id ordering. Ids not belonging to
 /// the finding are ignored; missing ids are simply left where they are.
-pub fn reorder(
-    conn: &mut Connection,
-    finding_id: &str,
-    ordered_ids: &[String],
-) -> AppResult<()> {
+pub fn reorder(conn: &mut Connection, finding_id: &str, ordered_ids: &[String]) -> AppResult<()> {
     let tx = conn.transaction()?;
     for (idx, iid) in ordered_ids.iter().enumerate() {
         tx.execute(

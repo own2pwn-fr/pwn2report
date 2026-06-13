@@ -16,7 +16,7 @@ use crate::models::{Evidence, FindingDescription, FindingKind, FindingRemediatio
 fn child_text(node: Node<'_, '_>, tag: &str) -> String {
     node.children()
         .find(|c| c.is_element() && c.has_tag_name(tag))
-        .map(|c| strip_html(&c.text().unwrap_or("").to_string()))
+        .map(|c| strip_html(c.text().unwrap_or("")))
         .unwrap_or_default()
 }
 
@@ -44,8 +44,8 @@ fn strip_html(s: &str) -> String {
 }
 
 pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
-    let doc = Document::parse(content)
-        .map_err(|e| AppError::Import(format!("invalid Burp XML: {e}")))?;
+    let doc =
+        Document::parse(content).map_err(|e| AppError::Import(format!("invalid Burp XML: {e}")))?;
 
     let mut findings = Vec::new();
 
@@ -103,7 +103,11 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 file: Some(location),
                 start_line: None,
                 end_line: None,
-                snippet: if detail.is_empty() { None } else { Some(detail) },
+                snippet: if detail.is_empty() {
+                    None
+                } else {
+                    Some(detail)
+                },
             })
         };
 

@@ -18,7 +18,8 @@ fn sqlcipher_roundtrip_and_wrong_key_fails() {
     // create encrypted db: PRAGMA key MUST run before any other statement
     {
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch("PRAGMA key = 'correct horse battery';").unwrap();
+        conn.execute_batch("PRAGMA key = 'correct horse battery';")
+            .unwrap();
         conn.execute_batch("CREATE TABLE t(x INTEGER);").unwrap();
         conn.execute("INSERT INTO t(x) VALUES (?1)", [42]).unwrap();
     }
@@ -26,7 +27,8 @@ fn sqlcipher_roundtrip_and_wrong_key_fails() {
     // reopen with correct key -> data readable
     {
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch("PRAGMA key = 'correct horse battery';").unwrap();
+        conn.execute_batch("PRAGMA key = 'correct horse battery';")
+            .unwrap();
         let v: i64 = conn.query_row("SELECT x FROM t", [], |r| r.get(0)).unwrap();
         assert_eq!(v, 42);
     }
@@ -52,8 +54,8 @@ fn sqlcipher_roundtrip_and_wrong_key_fails() {
 #[test]
 fn typst_compiles_to_pdf_with_injected_input() {
     use typst::foundations::{Dict, IntoValue, Str};
-    use typst_as_lib::TypstEngine;
     use typst_as_lib::typst_kit_options::TypstKitFontOptions;
+    use typst_as_lib::TypstEngine;
 
     static TEMPLATE: &str = r#"
 #import sys: inputs
@@ -84,5 +86,9 @@ Severity: #inputs.severity
     let pdf = typst_pdf::pdf(&doc, &Default::default()).expect("pdf generation failed");
 
     assert!(pdf.starts_with(b"%PDF"), "output must be a PDF");
-    assert!(pdf.len() > 1000, "PDF suspiciously small: {} bytes", pdf.len());
+    assert!(
+        pdf.len() > 1000,
+        "PDF suspiciously small: {} bytes",
+        pdf.len()
+    );
 }

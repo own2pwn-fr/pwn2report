@@ -68,9 +68,18 @@ dev packages (`webkit2gtk-4.1`, `javascriptcoregtk-4.1`).
 
 ```bash
 pnpm install
-pnpm tauri dev      # run the app
-pnpm tauri build    # produce installers
+bash scripts/fetch-pandoc.sh   # fetch the pandoc sidecar for your OS (gitignored)
+pnpm tauri dev                 # run the app
+pnpm tauri build               # produce installers
+
+# tests
+pnpm test                      # frontend (Vitest)
+cd src-tauri && cargo test     # backend (incl. end-to-end integration tests)
 ```
+
+DOCX export needs `pandoc`: it is bundled as a sidecar for release builds (`scripts/fetch-pandoc.sh`),
+and otherwise resolved from `PATH` (or the `PWN2REPORT_PANDOC` env var). CI builds/tests on
+Linux, macOS and Windows; tagging `v*` builds signed installers via the release workflow.
 
 ## License
 

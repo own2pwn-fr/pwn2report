@@ -7,6 +7,7 @@ pub mod content_model;
 pub mod docx;
 pub mod html;
 pub mod markdown;
+pub mod markup;
 pub mod typst_pdf;
 
 use crate::error::AppResult;
@@ -37,7 +38,11 @@ mod tests {
                 .render(doc)
                 .unwrap_or_else(|e| panic!("theme {slug} failed to compile: {e:?}"));
             assert!(pdf.starts_with(b"%PDF"), "{slug}: output is not a PDF");
-            assert!(pdf.len() > 1000, "{slug}: PDF suspiciously small ({} bytes)", pdf.len());
+            assert!(
+                pdf.len() > 1000,
+                "{slug}: PDF suspiciously small ({} bytes)",
+                pdf.len()
+            );
         }
     }
 
@@ -56,14 +61,22 @@ mod tests {
     #[test]
     fn docx_renders_when_pandoc_available() {
         use crate::render::docx::to_docx;
-        if std::process::Command::new("pandoc").arg("--version").output().is_err() {
+        if std::process::Command::new("pandoc")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
             eprintln!("pandoc not found on PATH; skipping docx render test");
             return;
         }
         let doc = build_document(&sample_report(), vec![sample_finding()], &HashMap::new());
         let bytes = to_docx(&doc).expect("docx render failed");
         assert!(bytes.starts_with(b"PK"), "docx must be a zip (PK header)");
-        assert!(bytes.len() > 1000, "docx suspiciously small ({} bytes)", bytes.len());
+        assert!(
+            bytes.len() > 1000,
+            "docx suspiciously small ({} bytes)",
+            bytes.len()
+        );
     }
 
     /// 1x1 PNG; exercises the Typst `image(bytes)` path + HTML data-URI embedding.
@@ -79,7 +92,11 @@ mod tests {
         let mut images = HashMap::new();
         images.insert(
             "f1".to_string(),
-            vec![("screenshot".to_string(), "image/png".to_string(), tiny_png())],
+            vec![(
+                "screenshot".to_string(),
+                "image/png".to_string(),
+                tiny_png(),
+            )],
         );
         for slug in ["web_pentest", "code_audit", "red_team"] {
             let doc = build_document(&sample_report(), vec![sample_finding()], &images);
@@ -90,15 +107,101 @@ mod tests {
         }
     }
 
+    /// Markdown-rich prose in the PDF path must compile through ALL themes.
+    ///
+    /// The Rust converter (`render/markup.rs`) turns the authored Markdown into
+    /// Typst markup and the themes `eval` it; this proves that round-trip never
+    /// breaks Typst compilation — including adversarial special characters that
+    /// would otherwise be misread as Typst syntax.
+    #[test]
+    fn themes_compile_with_markdown_prose() {
+        let mut finding = sample_finding();
+        // Description summary: bold, inline code, a link, a list.
+        finding.description.summary =
+            "A **critical** flaw in `auth()` — see [OWASP](https://owasp.org).\n\n\
+             - reachable pre-auth\n- no rate limiting"
+                .to_string();
+        // Remediation fix: heading + ordered list + code fence + special chars.
+        finding.remediation.fix = "# Fix\n\n1. Use `prepared statements`\n2. Validate input\n\n\
+             ```python\nq = \"SELECT 1\"  # $cost #1\n```\n\n\
+             Cost estimate: $5 for a=b & c<d > e @ ~tilde \\backslash"
+            .to_string();
+        // PoC scenario routed through `facet`/prose in red_team — adversarial.
+        finding.poc = finding.poc.map(|mut p| {
+            p.scenario = "Attacker sends `' OR 1=1 --` to /login $$ #boom".to_string();
+            p
+        });
+
+        // Report-level prose with Markdown too.
+        let mut report = sample_report();
+        report.exec_summary =
+            "Overall posture is **weak**. Key risks:\n\n- SQLi\n- broken auth".to_string();
+        report.scope = "In scope: `*.example.com` (see [policy](https://x/y)).".to_string();
+        report.methodology = "## Approach\n\nManual + `automated` testing.".to_string();
+
+        for slug in ["web_pentest", "code_audit", "red_team"] {
+            let doc = build_document(&report, vec![finding.clone()], &HashMap::new());
+            let pdf = PdfRenderer::bundled(slug)
+                .render(doc)
+                .unwrap_or_else(|e| panic!("theme {slug} failed on markdown prose: {e:?}"));
+            assert!(pdf.starts_with(b"%PDF"), "{slug}: output is not a PDF");
+            assert!(
+                pdf.len() > 1000,
+                "{slug}: PDF suspiciously small ({} bytes)",
+                pdf.len()
+            );
+        }
+    }
+
+    /// The md/html/docx renderers must keep receiving RAW markdown prose (the
+    /// Typst conversion must not leak into the shared `ReportDocument` IR).
+    #[test]
+    fn other_renderers_keep_raw_markdown() {
+        let mut finding = sample_finding();
+        finding.description.summary = "A **bold** point with `code`.".to_string();
+        finding.remediation.fix = "Use [docs](https://x).".to_string();
+        let doc = build_document(&sample_report(), vec![finding], &HashMap::new());
+
+        // Markdown renderer: prose passes through verbatim (still markdown).
+        let md = to_markdown(&doc);
+        assert!(
+            md.contains("A **bold** point with `code`."),
+            "md lost raw markdown"
+        );
+        assert!(
+            md.contains("Use [docs](https://x)."),
+            "md fix lost raw markdown"
+        );
+        assert!(!md.contains("#link("), "md must NOT contain typst markup");
+
+        // HTML renderer: prose is HTML-escaped, NOT converted to typst markup.
+        let html = to_html(&doc);
+        assert!(
+            html.contains("**bold**"),
+            "html lost raw markdown asterisks"
+        );
+        assert!(
+            !html.contains("#link("),
+            "html must NOT contain typst markup"
+        );
+    }
+
     #[test]
     fn html_embeds_image_as_data_uri() {
         let mut images = HashMap::new();
         images.insert(
             "f1".to_string(),
-            vec![("screenshot".to_string(), "image/png".to_string(), tiny_png())],
+            vec![(
+                "screenshot".to_string(),
+                "image/png".to_string(),
+                tiny_png(),
+            )],
         );
         let doc = build_document(&sample_report(), vec![sample_finding()], &images);
         let html = to_html(&doc);
-        assert!(html.contains("data:image/png;base64,"), "html must inline the image");
+        assert!(
+            html.contains("data:image/png;base64,"),
+            "html must inline the image"
+        );
     }
 }

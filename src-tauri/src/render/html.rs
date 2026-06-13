@@ -142,7 +142,10 @@ pub fn to_html(doc: &ReportDocument) -> String {
         meta.push(format!("<strong>Date:</strong> {}", esc(&doc.date)));
     }
     if !meta.is_empty() {
-        out.push_str(&format!("<div class=\"meta\">{}</div>\n", meta.join(" &middot; ")));
+        out.push_str(&format!(
+            "<div class=\"meta\">{}</div>\n",
+            meta.join(" &middot; ")
+        ));
     }
 
     if !doc.exec_summary.is_empty() {
@@ -229,10 +232,16 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
         meta.push(esc(&f.kind));
     }
     if !meta.is_empty() {
-        out.push_str(&format!("<div class=\"meta\">{}</div>\n", meta.join(" &middot; ")));
+        out.push_str(&format!(
+            "<div class=\"meta\">{}</div>\n",
+            meta.join(" &middot; ")
+        ));
     }
     if !f.cvss_vector.is_empty() {
-        out.push_str(&format!("<div class=\"meta\"><code>{}</code></div>\n", esc(&f.cvss_vector)));
+        out.push_str(&format!(
+            "<div class=\"meta\"><code>{}</code></div>\n",
+            esc(&f.cvss_vector)
+        ));
     }
 
     facet(out, "Summary", &f.summary);
@@ -254,7 +263,10 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
             String::new()
         };
         if !loc.is_empty() {
-            out.push_str(&format!("<div class=\"meta loc\"><code>{}</code></div>\n", esc(&loc)));
+            out.push_str(&format!(
+                "<div class=\"meta loc\"><code>{}</code></div>\n",
+                esc(&loc)
+            ));
         }
         code_block(out, &f.evidence_snippet);
     }
@@ -324,7 +336,10 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
 /// Emit a labelled facet (label + paragraph) only when non-empty.
 fn facet(out: &mut String, label: &str, body: &str) {
     if !body.is_empty() {
-        out.push_str(&format!("<div class=\"facet-label\">{}</div>\n", esc(label)));
+        out.push_str(&format!(
+            "<div class=\"facet-label\">{}</div>\n",
+            esc(label)
+        ));
         para(out, body);
     }
 }

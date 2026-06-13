@@ -36,11 +36,26 @@
   )
 }
 
-// Render a labelled facet block only when the body is non-empty.
+// Evaluate a prose VALUE as Typst markup. The Rust PDF path pre-converts these
+// prose fields from Markdown to compile-safe Typst markup (render/markup.rs), so
+// here we `eval` them in markup mode to get formatted output (bold, lists,
+// links, code, …). Robust to empty / non-string values: empty strings render
+// nothing, and a non-string (defensive) falls back to plain display.
+#let prose(body) = {
+  if body == none { return }
+  if type(body) == str {
+    if body != "" { eval(body, mode: "markup") }
+  } else {
+    body
+  }
+}
+
+// Render a labelled facet block only when the body is non-empty. The body is a
+// prose VALUE (Typst markup produced by the Rust converter) and is `eval`'d.
 #let facet(title, body) = {
   if body != none and body != "" {
     block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, title))
-    block(spacing: 10pt, body)
+    block(spacing: 10pt, prose(body))
   }
 }
 

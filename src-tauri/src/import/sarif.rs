@@ -58,7 +58,11 @@ fn rule_cwe(rule: &Value) -> Option<String> {
     // relationships → taxa id like "CWE-79"
     if let Some(rels) = rule.get("relationships").and_then(|r| r.as_array()) {
         for rel in rels {
-            if let Some(id) = rel.get("target").and_then(|t| t.get("id")).and_then(|i| i.as_str()) {
+            if let Some(id) = rel
+                .get("target")
+                .and_then(|t| t.get("id"))
+                .and_then(|i| i.as_str())
+            {
                 if id.to_ascii_uppercase().contains("CWE") {
                     if let Some(c) = normalize_cwe(id) {
                         return Some(c);

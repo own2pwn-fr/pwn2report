@@ -15,6 +15,7 @@ use derive_typst_intoval::{IntoDict, IntoValue};
 use typst::foundations::{Bytes, Dict, IntoValue as _};
 
 use crate::models::{Finding, Report, ReportType, Severity};
+use crate::render::markup::md_to_typst;
 
 /// One image source for a finding, as passed into [`build_document`]:
 /// `(caption, mime, raw bytes)`. Kept as a plain tuple-friendly type so the
@@ -117,6 +118,152 @@ pub struct FindingImage {
     pub data: Bytes,
 }
 
+// ---------------------------------------------------------------------------
+// Typst-specific projection.
+//
+// `ReportDocument` is the RAW IR: the Markdown / HTML / DOCX renderers read its
+// prose fields as authored Markdown. The Typst path is different — it `eval`s
+// the prose as Typst markup — so it needs the prose pre-converted from Markdown
+// to compile-safe Typst markup (see `render/markup.rs`). To avoid leaking that
+// conversion into the other renderers, the PDF renderer builds these
+// `Typst*Input` mirrors (SAME field names the themes reference) from a
+// `&ReportDocument`, converting only the prose fields. Everything else is copied
+// verbatim. This keeps the "raw IR" and "Typst dict" concerns cleanly split.
+// ---------------------------------------------------------------------------
+
+/// Top-level Typst template input. Field names MUST match `ReportDocument` so
+/// the bundled themes (which read `doc.exec_summary`, `doc.findings`, …) work
+/// unchanged. Prose fields hold Typst markup; the rest is copied verbatim.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct TypstReportInput {
+    pub title: String,
+    pub client: String,
+    pub report_type: String,
+    pub report_type_slug: String,
+    pub status: String,
+    pub date: String,
+    /// Prose → Typst markup.
+    pub exec_summary: String,
+    /// Prose → Typst markup.
+    pub scope: String,
+    /// Prose → Typst markup.
+    pub methodology: String,
+    pub summary: SeveritySummary,
+    pub findings: Vec<TypstFindingInput>,
+}
+
+/// Required by `compile_with_input` (input must be `impl Into<Dict>`).
+impl From<TypstReportInput> for Dict {
+    fn from(v: TypstReportInput) -> Self {
+        v.into_dict()
+    }
+}
+
+/// A finding projected for Typst. Field names mirror [`FindingInput`]; only the
+/// prose facets + remediation fix are converted to Typst markup, everything else
+/// (metadata, code blocks, evidence, images, refs, tags) is copied verbatim.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct TypstFindingInput {
+    pub title: String,
+    pub severity: String,
+    pub confidence: String,
+    pub kind: String,
+    pub cwe: String,
+    pub cve: String,
+    pub cvss_vector: String,
+    pub cvss_score: String,
+    pub triage_status: String,
+    // description facets — converted Markdown → Typst markup
+    pub summary: String,
+    pub root_cause: String,
+    pub attack_vector: String,
+    pub business_impact: String,
+    pub technical_details: String,
+    // remediation — `fix` converted; code_patch stays raw (it's a code block)
+    pub fix: String,
+    pub code_patch: String,
+    pub remediation_refs: Vec<String>,
+    // evidence (verbatim — snippet is a code block)
+    pub has_evidence: bool,
+    pub evidence_file: String,
+    pub evidence_lines: String,
+    pub evidence_snippet: String,
+    // poc — scenario is prose (and the red_team theme routes it through `facet`,
+    // which `eval`s its body, so it MUST be converted to compile-safe markup);
+    // steps + payload stay raw (list / code block)
+    pub has_poc: bool,
+    pub poc_scenario: String,
+    pub poc_steps: Vec<String>,
+    pub poc_payload: String,
+    // evidence images
+    pub images: Vec<FindingImage>,
+    // misc
+    pub refs: Vec<String>,
+    pub tags: Vec<String>,
+}
+
+impl TypstReportInput {
+    /// Project a raw [`ReportDocument`] into the Typst input, converting prose
+    /// fields from Markdown to Typst markup. Non-prose fields are cloned as-is.
+    pub fn from_document(doc: &ReportDocument) -> Self {
+        TypstReportInput {
+            title: doc.title.clone(),
+            client: doc.client.clone(),
+            report_type: doc.report_type.clone(),
+            report_type_slug: doc.report_type_slug.clone(),
+            status: doc.status.clone(),
+            date: doc.date.clone(),
+            exec_summary: md_to_typst(&doc.exec_summary),
+            scope: md_to_typst(&doc.scope),
+            methodology: md_to_typst(&doc.methodology),
+            summary: doc.summary.clone(),
+            findings: doc
+                .findings
+                .iter()
+                .map(TypstFindingInput::from_finding)
+                .collect(),
+        }
+    }
+}
+
+impl TypstFindingInput {
+    /// Project a raw [`FindingInput`] into the Typst input, converting the prose
+    /// description facets + remediation fix to Typst markup. Code blocks,
+    /// evidence, PoC, images, refs and tags are copied verbatim.
+    fn from_finding(f: &FindingInput) -> Self {
+        TypstFindingInput {
+            title: f.title.clone(),
+            severity: f.severity.clone(),
+            confidence: f.confidence.clone(),
+            kind: f.kind.clone(),
+            cwe: f.cwe.clone(),
+            cve: f.cve.clone(),
+            cvss_vector: f.cvss_vector.clone(),
+            cvss_score: f.cvss_score.clone(),
+            triage_status: f.triage_status.clone(),
+            summary: md_to_typst(&f.summary),
+            root_cause: md_to_typst(&f.root_cause),
+            attack_vector: md_to_typst(&f.attack_vector),
+            business_impact: md_to_typst(&f.business_impact),
+            technical_details: md_to_typst(&f.technical_details),
+            fix: md_to_typst(&f.fix),
+            code_patch: f.code_patch.clone(),
+            remediation_refs: f.remediation_refs.clone(),
+            has_evidence: f.has_evidence,
+            evidence_file: f.evidence_file.clone(),
+            evidence_lines: f.evidence_lines.clone(),
+            evidence_snippet: f.evidence_snippet.clone(),
+            has_poc: f.has_poc,
+            poc_scenario: md_to_typst(&f.poc_scenario),
+            poc_steps: f.poc_steps.clone(),
+            poc_payload: f.poc_payload.clone(),
+            images: f.images.clone(),
+            refs: f.refs.clone(),
+            tags: f.tags.clone(),
+        }
+    }
+}
+
 fn report_type_label(t: ReportType) -> &'static str {
     match t {
         ReportType::WebPentest => "Web Penetration Test",
@@ -149,10 +296,7 @@ impl FindingInput {
             cwe: f.cwe.clone().unwrap_or_default(),
             cve: f.cve.clone().unwrap_or_default(),
             cvss_vector: f.cvss_vector.clone().unwrap_or_default(),
-            cvss_score: f
-                .cvss_score
-                .map(|s| format!("{s:.1}"))
-                .unwrap_or_default(),
+            cvss_score: f.cvss_score.map(|s| format!("{s:.1}")).unwrap_or_default(),
             triage_status: format!("{:?}", f.triage_status).to_lowercase(),
             summary: f.description.summary.clone(),
             root_cause: f.description.root_cause.clone(),
@@ -163,19 +307,15 @@ impl FindingInput {
             code_patch: f.remediation.code_patch.clone().unwrap_or_default(),
             remediation_refs: f.remediation.references.clone(),
             has_evidence: evidence.is_some(),
-            evidence_file: evidence
-                .and_then(|e| e.file.clone())
-                .unwrap_or_default(),
+            evidence_file: evidence.and_then(|e| e.file.clone()).unwrap_or_default(),
             evidence_lines,
-            evidence_snippet: evidence
-                .and_then(|e| e.snippet.clone())
-                .unwrap_or_default(),
+            evidence_snippet: evidence.and_then(|e| e.snippet.clone()).unwrap_or_default(),
             has_poc: poc.is_some(),
             poc_scenario: poc.map(|p| p.scenario.clone()).unwrap_or_default(),
-            poc_steps: poc.map(|p| p.exploitation_steps.clone()).unwrap_or_default(),
-            poc_payload: poc
-                .and_then(|p| p.payload.clone())
+            poc_steps: poc
+                .map(|p| p.exploitation_steps.clone())
                 .unwrap_or_default(),
+            poc_payload: poc.and_then(|p| p.payload.clone()).unwrap_or_default(),
             images: images
                 .iter()
                 .map(|(caption, mime, data)| FindingImage {

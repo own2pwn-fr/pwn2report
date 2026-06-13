@@ -15,7 +15,7 @@
 
 use typst_as_lib::TypstEngine;
 
-use super::content_model::ReportDocument;
+use super::content_model::{ReportDocument, TypstReportInput};
 use super::Renderer;
 use crate::error::{AppError, AppResult};
 
@@ -73,6 +73,13 @@ impl PdfRenderer {
 
 impl Renderer for PdfRenderer {
     fn render(&self, doc: ReportDocument) -> AppResult<Vec<u8>> {
+        // Convert the raw IR's prose fields (authored Markdown) into compile-safe
+        // Typst markup, building the Typst-specific input. The other renderers
+        // (md / html / docx) keep consuming the raw `ReportDocument` unchanged —
+        // only this PDF path performs the conversion. The themes `eval` the
+        // resulting markup so it renders formatted.
+        let doc = TypstReportInput::from_document(&doc);
+
         // Register the shared lib under its stable virtual path so the main
         // file's `#import "lib/common.typ"` resolves in-memory.
         let engine = TypstEngine::builder()

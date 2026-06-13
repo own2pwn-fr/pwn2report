@@ -217,9 +217,15 @@ mod tests {
         assert_eq!(back.reports[0].id, "r-1");
         assert_eq!(back.findings.len(), 1);
         assert_eq!(back.findings[0].cwe.as_deref(), Some("CWE-89"));
-        assert_eq!(back.findings[0].poc.as_ref().unwrap().payload.as_deref(), Some("' OR 1=1"));
+        assert_eq!(
+            back.findings[0].poc.as_ref().unwrap().payload.as_deref(),
+            Some("' OR 1=1")
+        );
         assert_eq!(back.evidence_images.len(), 1);
-        assert_eq!(back.evidence_images[0].data_base64, bundle.evidence_images[0].data_base64);
+        assert_eq!(
+            back.evidence_images[0].data_base64,
+            bundle.evidence_images[0].data_base64
+        );
     }
 
     #[test]

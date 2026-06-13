@@ -32,10 +32,31 @@ use crate::error::{AppError, AppResult};
 /// Bundled pandoc reference doc carrying the own2pwn DOCX styling.
 static REFERENCE_DOCX: &[u8] = include_bytes!("../../resources/pandoc/reference.docx");
 
-/// Resolve the pandoc executable: honor `PWN2REPORT_PANDOC` if set, else rely
-/// on `PATH` (just `"pandoc"`).
+/// Resolve the pandoc executable, in order:
+/// 1. the `PWN2REPORT_PANDOC` override env var,
+/// 2. a bundled sidecar sitting next to our own executable (Tauri `externalBin`
+///    drops it there named `pandoc`/`pandoc.exe`),
+/// 3. `pandoc` from `PATH`.
 fn pandoc_bin() -> String {
-    std::env::var("PWN2REPORT_PANDOC").unwrap_or_else(|_| "pandoc".to_string())
+    if let Ok(p) = std::env::var("PWN2REPORT_PANDOC") {
+        if !p.is_empty() {
+            return p;
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let name = if cfg!(windows) {
+                "pandoc.exe"
+            } else {
+                "pandoc"
+            };
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
+    "pandoc".to_string()
 }
 
 /// Map a MIME type to a file extension for the temp image files. Defaults to
@@ -133,7 +154,9 @@ fn render_in_dir(doc: &ReportDocument, work_dir: &Path) -> AppResult<Vec<u8>> {
     // Feed the markdown via stdin, then wait for the docx on stdout.
     if let Some(mut stdin) = child.stdin.take() {
         if let Err(e) = stdin.write_all(markdown.as_bytes()) {
-            return Err(AppError::Pandoc(format!("failed writing to pandoc stdin: {e}")));
+            return Err(AppError::Pandoc(format!(
+                "failed writing to pandoc stdin: {e}"
+            )));
         }
         // Drop stdin to signal EOF before waiting (avoids a deadlock).
     }

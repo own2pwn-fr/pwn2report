@@ -91,12 +91,15 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             let cvss_score = child_text(item, "cvss3_base_score")
                 .or_else(|| child_text(item, "cvss_base_score"))
                 .and_then(|s| s.parse::<f64>().ok());
-            let cvss_vector = child_text(item, "cvss3_vector")
-                .or_else(|| child_text(item, "cvss_vector"));
+            let cvss_vector =
+                child_text(item, "cvss3_vector").or_else(|| child_text(item, "cvss_vector"));
 
             let mut references: Vec<String> = Vec::new();
             references.extend(child_texts(item, "see_also").into_iter().flat_map(|s| {
-                s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect::<Vec<_>>()
+                s.lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect::<Vec<_>>()
             }));
 
             let port = item.attribute("port").unwrap_or("");
