@@ -135,6 +135,10 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
             poc: None,
             refs: None,
             tags: Some(vec!["imported".into(), "burp".into()]),
+            retest_status: None,
+            retest_date: None,
+            custom_fields: None,
+            mappings: None,
         });
     }
 

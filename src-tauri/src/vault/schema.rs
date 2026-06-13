@@ -29,7 +29,7 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Current schema version. Bump when adding a migration step (see module docs).
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 /// A single idempotent migration step.
 type MigrationStep = fn(&Connection) -> AppResult<()>;
@@ -43,6 +43,7 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
     (4, migrate_v4),
     (5, migrate_v5),
     (6, migrate_v6),
+    (7, migrate_v7),
 ];
 
 /// Apply any pending migrations and stamp the schema version.
@@ -51,7 +52,7 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
 /// a no-op. Otherwise every step with `version > current` runs in order inside a
 /// single transaction, then `user_version` + the `meta` mirror are bumped.
 ///
-/// Fresh installs (user_version 0) run the whole v1..=v6 ladder; existing v1..v5
+/// Fresh installs (user_version 0) run the whole v1..=v7 ladder; existing v1..v6
 /// vaults run only the steps they are missing.
 pub fn init(conn: &Connection) -> AppResult<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -306,6 +307,36 @@ fn migrate_v6(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// v7: retest workflow + custom fields + compliance mappings. Adds:
+///   - `findings.retest_status` (nullable: not_retested/fixed/partially_fixed/
+///     not_fixed/risk_accepted), `findings.retest_date` (nullable).
+///   - `findings.custom_fields` (JSON object string→string, default '{}').
+///   - `findings.mappings` (JSON array of {framework,id,name?}, default '[]').
+///   - `reports.custom_fields` (JSON object, default '{}').
+///
+/// All are plain columns on existing syncable tables, so they ride the existing
+/// LWW snapshot/merge. `column_exists`-guarded `ADD COLUMN` keeps the step
+/// idempotent.
+fn migrate_v7(conn: &Connection) -> AppResult<()> {
+    let finding_columns: &[(&str, &str)] = &[
+        ("retest_status", "TEXT"),
+        ("retest_date", "TEXT"),
+        ("custom_fields", "TEXT NOT NULL DEFAULT '{}'"),
+        ("mappings", "TEXT NOT NULL DEFAULT '[]'"),
+    ];
+    for (name, ty) in finding_columns {
+        if !column_exists(conn, "findings", name)? {
+            conn.execute_batch(&format!("ALTER TABLE findings ADD COLUMN {name} {ty};"))?;
+        }
+    }
+    if !column_exists(conn, "reports", "custom_fields")? {
+        conn.execute_batch(
+            "ALTER TABLE reports ADD COLUMN custom_fields TEXT NOT NULL DEFAULT '{}';",
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,5 +505,87 @@ mod tests {
             })
             .unwrap();
         assert_eq!(authors, "[]");
+    }
+
+    /// A fresh DB has the v7 retest / custom-fields / mappings columns with the
+    /// documented defaults.
+    #[test]
+    fn fresh_db_has_v7_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        for col in ["retest_status", "retest_date", "custom_fields", "mappings"] {
+            assert!(column_exists(&conn, "findings", col).unwrap(), "{col}");
+        }
+        assert!(column_exists(&conn, "reports", "custom_fields").unwrap());
+
+        // Inserting a minimal report + finding picks up the column defaults.
+        conn.execute(
+            "INSERT INTO reports (id, title, report_type, created_at, updated_at) \
+             VALUES ('r1', 't', 'web_pentest', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO findings (id, report_id, title, severity, created_at, updated_at) \
+             VALUES ('f1', 'r1', 't', 'high', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let (cf, maps, retest): (String, String, Option<String>) = conn
+            .query_row(
+                "SELECT custom_fields, mappings, retest_status FROM findings WHERE id = 'f1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(cf, "{}");
+        assert_eq!(maps, "[]");
+        assert!(retest.is_none());
+        let report_cf: String = conn
+            .query_row(
+                "SELECT custom_fields FROM reports WHERE id = 'r1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(report_cf, "{}");
+    }
+
+    /// Upgrading a v6 vault to current adds the v7 columns without dropping data.
+    #[test]
+    fn upgrade_from_v6_adds_v7_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate_v1(&conn).unwrap();
+        migrate_v2(&conn).unwrap();
+        migrate_v3(&conn).unwrap();
+        migrate_v4(&conn).unwrap();
+        migrate_v5(&conn).unwrap();
+        migrate_v6(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 6i64).unwrap();
+        conn.execute(
+            "INSERT INTO reports (id, title, report_type, created_at, updated_at) \
+             VALUES ('r1', 't', 'web_pentest', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        assert!(!column_exists(&conn, "findings", "custom_fields").unwrap());
+
+        init(&conn).unwrap();
+
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, SCHEMA_VERSION);
+        assert!(column_exists(&conn, "findings", "mappings").unwrap());
+        assert!(column_exists(&conn, "reports", "custom_fields").unwrap());
+        // The pre-existing report got the default custom_fields.
+        let report_cf: String = conn
+            .query_row(
+                "SELECT custom_fields FROM reports WHERE id = 'r1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(report_cf, "{}");
     }
 }

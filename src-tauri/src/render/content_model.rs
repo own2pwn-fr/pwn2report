@@ -14,7 +14,9 @@ use derive_typst_intoval::{IntoDict, IntoValue};
 // scope: the derived `into_dict`/`into_value` call `field.into_value()`.
 use typst::foundations::{Bytes, Dict, IntoValue as _};
 
-use crate::models::{Asset, AssetKind, Finding, Report, ReportType, ScopeItem, Severity};
+use crate::models::{
+    Asset, AssetKind, Finding, Report, ReportType, RetestStatus, ScopeItem, Severity,
+};
 use crate::render::cvss;
 use crate::render::labels::Labels;
 use crate::render::markup::md_to_typst;
@@ -68,6 +70,8 @@ pub struct ReportDocument {
     pub scope_items: Vec<ScopeRowInput>,
     /// Per-severity counts for the summary table.
     pub summary: SeveritySummary,
+    /// Report-level user-defined custom fields (key order). May be empty.
+    pub custom_fields: Vec<CustomFieldInput>,
     /// Findings, already sorted (severity desc, then sort_order).
     pub findings: Vec<FindingInput>,
 }
@@ -90,6 +94,38 @@ pub struct AssetInput {
     pub kind_label: String,
     pub identifier: String,
     pub description: String,
+}
+
+/// A single user-defined custom field, flattened for the renderers as a
+/// `(field, value)` pair. Used for both report-level and per-finding custom
+/// fields; emitted in a small two-column table.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct CustomFieldInput {
+    pub field: String,
+    pub value: String,
+}
+
+/// A single compliance / framework mapping, flattened for the renderers.
+/// `name` is "" when the source mapping had no human-readable label.
+#[derive(Debug, Clone, IntoValue, IntoDict)]
+pub struct MappingInput {
+    pub framework: String,
+    pub id: String,
+    pub name: String,
+}
+
+/// Project a model `BTreeMap` of custom fields into the renderer-friendly list,
+/// in key order (the map is already sorted).
+fn custom_fields_to_inputs(
+    fields: &std::collections::BTreeMap<String, String>,
+) -> Vec<CustomFieldInput> {
+    fields
+        .iter()
+        .map(|(field, value)| CustomFieldInput {
+            field: field.clone(),
+            value: value.clone(),
+        })
+        .collect()
 }
 
 /// Required by `compile_with_input` (input must be `impl Into<Dict>`).
@@ -154,6 +190,19 @@ pub struct FindingInput {
     pub images: Vec<FindingImage>,
     // affected assets (the finding↔asset link set, resolved to live assets)
     pub affected_assets: Vec<AssetInput>,
+    // retest workflow (schema v7)
+    /// `true` when a retest status is recorded; renderers gate the badge on this.
+    pub has_retest: bool,
+    /// snake_case retest status ("fixed", …) — the renderer maps it to a label.
+    pub retest_status: String,
+    /// Localized retest-status label ("Fixed", …); "" when no retest.
+    pub retest_status_label: String,
+    /// Retest date ("" when unset).
+    pub retest_date: String,
+    // compliance mappings (schema v7)
+    pub mappings: Vec<MappingInput>,
+    // per-finding user-defined custom fields (key order)
+    pub custom_fields: Vec<CustomFieldInput>,
     // misc
     pub refs: Vec<String>,
     pub tags: Vec<String>,
@@ -227,6 +276,8 @@ pub struct TypstReportInput {
     pub logo: Bytes,
     pub scope_items: Vec<ScopeRowInput>,
     pub summary: SeveritySummary,
+    /// Report-level custom fields — copied verbatim from the raw IR.
+    pub custom_fields: Vec<CustomFieldInput>,
     pub findings: Vec<TypstFindingInput>,
 }
 
@@ -279,6 +330,13 @@ pub struct TypstFindingInput {
     pub images: Vec<FindingImage>,
     // affected assets — copied verbatim from the raw IR.
     pub affected_assets: Vec<AssetInput>,
+    // retest workflow + mappings + custom fields — copied verbatim.
+    pub has_retest: bool,
+    pub retest_status: String,
+    pub retest_status_label: String,
+    pub retest_date: String,
+    pub mappings: Vec<MappingInput>,
+    pub custom_fields: Vec<CustomFieldInput>,
     // misc
     pub refs: Vec<String>,
     pub tags: Vec<String>,
@@ -311,6 +369,7 @@ impl TypstReportInput {
             logo: doc.logo.clone(),
             scope_items: doc.scope_items.clone(),
             summary: doc.summary.clone(),
+            custom_fields: doc.custom_fields.clone(),
             findings: doc
                 .findings
                 .iter()
@@ -354,6 +413,12 @@ impl TypstFindingInput {
             poc_payload: f.poc_payload.clone(),
             images: f.images.clone(),
             affected_assets: f.affected_assets.clone(),
+            has_retest: f.has_retest,
+            retest_status: f.retest_status.clone(),
+            retest_status_label: f.retest_status_label.clone(),
+            retest_date: f.retest_date.clone(),
+            mappings: f.mappings.clone(),
+            custom_fields: f.custom_fields.clone(),
             refs: f.refs.clone(),
             tags: f.tags.clone(),
         }
@@ -379,6 +444,17 @@ fn asset_kind_label(kind: AssetKind, labels: &Labels) -> &'static str {
         AssetKind::Domain => labels.asset_domain,
         AssetKind::Credential => labels.asset_credential,
         AssetKind::Other => labels.asset_other,
+    }
+}
+
+/// The localized human-readable retest-status label.
+fn retest_status_label(status: RetestStatus, labels: &Labels) -> &'static str {
+    match status {
+        RetestStatus::NotRetested => labels.retest_not_retested,
+        RetestStatus::Fixed => labels.retest_fixed,
+        RetestStatus::PartiallyFixed => labels.retest_partially_fixed,
+        RetestStatus::NotFixed => labels.retest_not_fixed,
+        RetestStatus::RiskAccepted => labels.retest_risk_accepted,
     }
 }
 
@@ -460,6 +536,26 @@ impl FindingInput {
                 })
                 .collect(),
             affected_assets: assets.iter().map(|a| asset_to_input(a, labels)).collect(),
+            has_retest: f.retest_status.is_some(),
+            retest_status: f
+                .retest_status
+                .map(|r| r.as_str().to_string())
+                .unwrap_or_default(),
+            retest_status_label: f
+                .retest_status
+                .map(|r| retest_status_label(r, labels).to_string())
+                .unwrap_or_default(),
+            retest_date: f.retest_date.clone().unwrap_or_default(),
+            mappings: f
+                .mappings
+                .iter()
+                .map(|m| MappingInput {
+                    framework: m.framework.clone(),
+                    id: m.id.clone(),
+                    name: m.name.clone().unwrap_or_default(),
+                })
+                .collect(),
+            custom_fields: custom_fields_to_inputs(&f.custom_fields),
             refs: f.refs.clone(),
             tags: f.tags.clone(),
         }
@@ -557,6 +653,7 @@ pub fn build_document(
         logo: logo_bytes,
         scope_items: scope_rows,
         summary,
+        custom_fields: custom_fields_to_inputs(&report.custom_fields),
         findings: findings
             .iter()
             .map(|f| {

@@ -318,6 +318,12 @@ pub fn to_html(doc: &ReportDocument) -> String {
         para(&mut out, &doc.methodology);
     }
 
+    // Report-level custom fields.
+    if !doc.custom_fields.is_empty() {
+        out.push_str(&format!("<h2>{}</h2>\n", esc(l.custom_fields)));
+        push_custom_fields(&mut out, &doc.custom_fields, l);
+    }
+
     if !doc.findings.is_empty() {
         out.push_str(&format!("<h2>{}</h2>\n", esc(l.detailed_findings)));
         for (i, f) in doc.findings.iter().enumerate() {
@@ -436,6 +442,21 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput, l: &Labels) {
         ));
     }
 
+    // Retest status badge (when recorded).
+    if f.has_retest {
+        let date = if f.retest_date.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", esc(&f.retest_date))
+        };
+        out.push_str(&format!(
+            "<div class=\"meta retest\">{}: {}{}</div>\n",
+            esc(l.retest),
+            esc(&f.retest_status_label),
+            date
+        ));
+    }
+
     facet(out, l.summary, &f.summary);
     facet(out, l.root_cause, &f.root_cause);
     facet(out, l.attack_vector, &f.attack_vector);
@@ -551,6 +572,31 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput, l: &Labels) {
         }
     }
 
+    // Compliance / framework mappings.
+    if !f.mappings.is_empty() {
+        out.push_str(&format!(
+            "<div class=\"facet-label\">{}</div>\n<ul>\n",
+            esc(l.mappings)
+        ));
+        for m in &f.mappings {
+            let name = if m.name.is_empty() {
+                String::new()
+            } else {
+                format!(" &mdash; {}", esc(&m.name))
+            };
+            out.push_str(&format!(
+                "<li><strong>{}:</strong> {}{}</li>\n",
+                esc(&m.framework),
+                esc(&m.id),
+                name
+            ));
+        }
+        out.push_str("</ul>\n");
+    }
+
+    // Per-finding custom fields table.
+    push_custom_fields(out, &f.custom_fields, l);
+
     if !f.tags.is_empty() {
         out.push_str("<div class=\"meta\">");
         for t in &f.tags {
@@ -560,6 +606,36 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput, l: &Labels) {
     }
 
     out.push_str("</div>\n");
+}
+
+/// Emit a two-column `(Field | Value)` table for custom fields (no-op if empty).
+fn push_custom_fields(
+    out: &mut String,
+    fields: &[super::content_model::CustomFieldInput],
+    l: &Labels,
+) {
+    if fields.is_empty() {
+        return;
+    }
+    out.push_str(&format!(
+        "<div class=\"facet-label\">{}</div>\n",
+        esc(l.custom_fields)
+    ));
+    out.push_str("<table class=\"custom-fields\">\n<thead><tr>");
+    out.push_str(&format!(
+        "<th>{}</th><th>{}</th>",
+        esc(l.field),
+        esc(l.value)
+    ));
+    out.push_str("</tr></thead>\n<tbody>\n");
+    for cf in fields {
+        out.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td></tr>\n",
+            esc(&cf.field),
+            esc(&cf.value)
+        ));
+    }
+    out.push_str("</tbody>\n</table>\n");
 }
 
 /// Emit a labelled facet (label + paragraph) only when non-empty.

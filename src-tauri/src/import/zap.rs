@@ -139,6 +139,10 @@ fn alert_to_finding(alert: &Value) -> NewFinding {
         poc: None,
         refs: Some(references),
         tags: Some(vec!["imported".into(), "zap".into()]),
+        retest_status: None,
+        retest_date: None,
+        custom_fields: None,
+        mappings: None,
     }
 }
 

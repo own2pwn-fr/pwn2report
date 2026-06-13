@@ -5,6 +5,8 @@
 //! `evidence`, `poc`) are persisted as JSON TEXT columns and (de)serialized
 //! with serde_json by the `db` layer.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Risk severity. Ordering matters for report sorting (critical first); see
@@ -71,6 +73,59 @@ pub enum FindingKind {
     Iac,
     Sca,
     Secret,
+}
+
+/// Retest disposition for a finding (the "did the fix land?" verdict of a
+/// follow-up assessment). `None` on the model means "no retest column value";
+/// the explicit [`RetestStatus::NotRetested`] is the in-band "checked, still to
+/// do" state. Serializes snake_case to match the DB column + wire format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetestStatus {
+    NotRetested,
+    Fixed,
+    PartiallyFixed,
+    NotFixed,
+    RiskAccepted,
+}
+
+impl RetestStatus {
+    /// snake_case wire string (also what is stored in the DB column).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RetestStatus::NotRetested => "not_retested",
+            RetestStatus::Fixed => "fixed",
+            RetestStatus::PartiallyFixed => "partially_fixed",
+            RetestStatus::NotFixed => "not_fixed",
+            RetestStatus::RiskAccepted => "risk_accepted",
+        }
+    }
+
+    /// Parse a column value back into a `RetestStatus`. Returns `None` for NULL /
+    /// empty / unknown values so an absent column maps to "no retest".
+    pub fn from_db(s: &str) -> Option<RetestStatus> {
+        match s {
+            "not_retested" => Some(RetestStatus::NotRetested),
+            "fixed" => Some(RetestStatus::Fixed),
+            "partially_fixed" => Some(RetestStatus::PartiallyFixed),
+            "not_fixed" => Some(RetestStatus::NotFixed),
+            "risk_accepted" => Some(RetestStatus::RiskAccepted),
+            _ => None,
+        }
+    }
+}
+
+/// A compliance / framework mapping for a finding (e.g. OWASP Top 10, PCI-DSS,
+/// MITRE ATT&CK). Stored as an element of the finding's `mappings` JSON array.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Mapping {
+    /// Framework name/slug ("OWASP", "PCI-DSS", "MITRE ATT&CK", …).
+    pub framework: String,
+    /// Identifier within the framework ("A01:2021", "6.5.1", "T1190", …).
+    pub id: String,
+    /// Optional human-readable label for the identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Five-facet structured description (stored as JSON).
@@ -145,6 +200,21 @@ pub struct Finding {
     pub poc: Option<StructuredPoc>,
     pub refs: Vec<String>,
     pub tags: Vec<String>,
+    /// Retest disposition (schema v7). `None` = no retest recorded; an explicit
+    /// [`RetestStatus`] otherwise. Omitted from the IPC payload when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retest_status: Option<RetestStatus>,
+    /// Date the retest was performed (free-form / ISO). `None` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retest_date: Option<String>,
+    /// Arbitrary user-defined fields (string → string), stored as a JSON object.
+    /// Defaults to an empty map.
+    #[serde(default)]
+    pub custom_fields: BTreeMap<String, String>,
+    /// Compliance / framework mappings (schema v7), stored as a JSON array.
+    /// Defaults to empty.
+    #[serde(default)]
+    pub mappings: Vec<Mapping>,
     pub created_at: String,
     pub updated_at: String,
     /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
@@ -188,6 +258,14 @@ pub struct NewFinding {
     pub refs: Option<Vec<String>>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub retest_status: Option<RetestStatus>,
+    #[serde(default)]
+    pub retest_date: Option<String>,
+    #[serde(default)]
+    pub custom_fields: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub mappings: Option<Vec<Mapping>>,
 }
 
 /// Partial update for `update_finding`. A `None` field is left unchanged.
@@ -229,4 +307,16 @@ pub struct FindingPatch {
     pub refs: Option<Vec<String>>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// Nullable: a JSON `null` clears the retest status; an omitted field leaves
+    /// it. `Some(Some(v))` sets it.
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub retest_status: Option<Option<RetestStatus>>,
+    #[serde(default, deserialize_with = "super::double_option")]
+    pub retest_date: Option<Option<String>>,
+    /// Replace-on-present: the whole map is replaced when the field is present.
+    #[serde(default)]
+    pub custom_fields: Option<BTreeMap<String, String>>,
+    /// Replace-on-present: the whole array is replaced when the field is present.
+    #[serde(default)]
+    pub mappings: Option<Vec<Mapping>>,
 }

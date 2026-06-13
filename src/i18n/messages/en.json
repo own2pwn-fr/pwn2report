@@ -32,6 +32,7 @@
     "saved": "Saved",
     "delete": "Delete",
     "edit": "Edit",
+    "duplicate": "Duplicate",
     "close": "Close",
     "back": "Back",
     "confirm": "Confirm",
@@ -96,6 +97,8 @@
     "deleteTitle": "Delete report?",
     "deleteConfirm": "Delete this report and all its findings? This cannot be undone.",
     "deleted": "Deleted “{{title}}”.",
+    "duplicated": "Duplicated “{{title}}”.",
+    "duplicateError": "Could not duplicate the report.",
     "empty": {
       "title": "No reports yet",
       "body": "Create your first report to start documenting findings.",
@@ -232,6 +235,8 @@
     "deleteTitle": "Delete finding?",
     "deleteConfirm": "Delete this finding? This cannot be undone.",
     "deleted": "Deleted “{{title}}”.",
+    "duplicated": "Duplicated “{{title}}”.",
+    "duplicateError": "Could not duplicate the finding.",
     "createError": "Could not create the finding.",
     "addRow": "Add",
     "discard": {
@@ -254,8 +259,13 @@
       "evidence": "Evidence",
       "poc": "Proof of concept",
       "remediation": "Remediation",
-      "metadata": "References & tags"
+      "metadata": "References & tags",
+      "retest": "Retest",
+      "mappings": "Compliance mappings",
+      "customFields": "Custom fields"
     },
+    "fieldRetestStatus": "Retest status",
+    "fieldRetestDate": "Retest date",
     "fieldTitle": "Title",
     "fieldTitlePlaceholder": "e.g. SQL injection in login form",
     "fieldSeverity": "Severity",
@@ -406,6 +416,39 @@
     "acknowledged": "Acknowledged",
     "false_positive": "False positive",
     "resolved": "Resolved"
+  },
+  "retest": {
+    "not_retested": "Not retested",
+    "fixed": "Fixed",
+    "partially_fixed": "Partially fixed",
+    "not_fixed": "Not fixed",
+    "risk_accepted": "Risk accepted"
+  },
+  "mappings": {
+    "framework": "Framework",
+    "id": "ID",
+    "idPlaceholder": "e.g. A03:2021",
+    "name": "Name",
+    "namePlaceholder": "Optional name…",
+    "addRow": "Add mapping"
+  },
+  "mappingFramework": {
+    "owasp_top10": "OWASP Top 10",
+    "owasp_asvs": "OWASP ASVS",
+    "mitre_attack": "MITRE ATT&CK",
+    "pci_dss": "PCI DSS",
+    "nist": "NIST",
+    "cwe": "CWE",
+    "custom": "Custom"
+  },
+  "customFields": {
+    "title": "Custom fields",
+    "reportHint": "Free-form key/value metadata attached to this report.",
+    "key": "Key",
+    "keyPlaceholder": "Key",
+    "value": "Value",
+    "valuePlaceholder": "Value",
+    "addRow": "Add field"
   },
   "cvss": {
     "score": "Score {{score}}",

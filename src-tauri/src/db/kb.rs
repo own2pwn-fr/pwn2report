@@ -321,5 +321,9 @@ pub fn to_new_finding(entry: &KbEntry) -> NewFinding {
         poc: None,
         refs: None,
         tags: Some(entry.tags.clone()),
+        retest_status: None,
+        retest_date: None,
+        custom_fields: None,
+        mappings: None,
     }
 }

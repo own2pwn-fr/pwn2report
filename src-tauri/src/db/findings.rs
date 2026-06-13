@@ -4,11 +4,13 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
 
+use std::collections::BTreeMap;
+
 use super::now_rfc3339;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     Asset, AssetKind, Confidence, Evidence, Finding, FindingDescription, FindingKind, FindingPatch,
-    FindingRemediation, NewFinding, Severity, StructuredPoc, TriageStatus,
+    FindingRemediation, Mapping, NewFinding, RetestStatus, Severity, StructuredPoc, TriageStatus,
 };
 
 // --- enum <-> column string helpers ----------------------------------------
@@ -102,6 +104,24 @@ pub(crate) fn json_vec(raw: Option<String>) -> AppResult<Vec<String>> {
     }
 }
 
+/// Parse the `custom_fields` JSON-object column into a `BTreeMap`, defaulting to
+/// empty on NULL / empty.
+pub(crate) fn json_map(raw: Option<String>) -> AppResult<BTreeMap<String, String>> {
+    match raw {
+        Some(s) if !s.is_empty() => Ok(serde_json::from_str(&s)?),
+        _ => Ok(BTreeMap::new()),
+    }
+}
+
+/// Parse the `mappings` JSON-array column into a `Vec<Mapping>`, defaulting to
+/// empty on NULL / empty.
+pub(crate) fn json_mappings(raw: Option<String>) -> AppResult<Vec<Mapping>> {
+    match raw {
+        Some(s) if !s.is_empty() => Ok(serde_json::from_str(&s)?),
+        _ => Ok(Vec::new()),
+    }
+}
+
 /// Map a full `findings` row to a `Finding`.
 fn row_to_finding(row: &Row) -> AppResult<Finding> {
     let severity: String = row.get("severity")?;
@@ -129,6 +149,13 @@ fn row_to_finding(row: &Row) -> AppResult<Finding> {
         poc: json_opt::<StructuredPoc>(row.get("poc")?)?,
         refs: json_vec(row.get("refs")?)?,
         tags: json_vec(row.get("tags")?)?,
+        retest_status: row
+            .get::<_, Option<String>>("retest_status")?
+            .as_deref()
+            .and_then(RetestStatus::from_db),
+        retest_date: row.get("retest_date")?,
+        custom_fields: json_map(row.get("custom_fields")?)?,
+        mappings: json_mappings(row.get("mappings")?)?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         deleted_at: row.get("deleted_at")?,
@@ -145,6 +172,8 @@ struct FindingCols {
     poc: Option<String>,
     refs: String,
     tags: String,
+    custom_fields: String,
+    mappings: String,
 }
 
 fn finding_cols(f: &Finding) -> AppResult<FindingCols> {
@@ -155,6 +184,8 @@ fn finding_cols(f: &Finding) -> AppResult<FindingCols> {
         poc: f.poc.as_ref().map(serde_json::to_string).transpose()?,
         refs: serde_json::to_string(&f.refs)?,
         tags: serde_json::to_string(&f.tags)?,
+        custom_fields: serde_json::to_string(&f.custom_fields)?,
+        mappings: serde_json::to_string(&f.mappings)?,
     })
 }
 
@@ -211,12 +242,14 @@ pub fn insert_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             (id, report_id, sort_order, title, severity, confidence, kind,
              cwe, cve, cvss_vector, cvss_score, triage_status, triage_note,
              description, remediation, evidence, poc, refs, tags,
+             retest_status, retest_date, custom_fields, mappings,
              created_at, updated_at, deleted_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7,
              ?8, ?9, ?10, ?11, ?12, ?13,
              ?14, ?15, ?16, ?17, ?18, ?19,
-             ?20, ?21, ?22)
+             ?20, ?21, ?22, ?23,
+             ?24, ?25, ?26)
         "#,
         params![
             f.id,
@@ -238,6 +271,10 @@ pub fn insert_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             c.poc,
             c.refs,
             c.tags,
+            f.retest_status.map(|r| r.as_str()),
+            f.retest_date,
+            c.custom_fields,
+            c.mappings,
             f.created_at,
             f.updated_at,
             f.deleted_at,
@@ -258,7 +295,9 @@ pub fn update_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             kind = ?6, cwe = ?7, cve = ?8, cvss_vector = ?9, cvss_score = ?10,
             triage_status = ?11, triage_note = ?12, description = ?13,
             remediation = ?14, evidence = ?15, poc = ?16, refs = ?17,
-            tags = ?18, created_at = ?19, updated_at = ?20, deleted_at = ?21
+            tags = ?18, retest_status = ?19, retest_date = ?20,
+            custom_fields = ?21, mappings = ?22, created_at = ?23,
+            updated_at = ?24, deleted_at = ?25
         WHERE id = ?1
         "#,
         params![
@@ -280,6 +319,10 @@ pub fn update_raw(conn: &Connection, f: &Finding) -> AppResult<()> {
             c.poc,
             c.refs,
             c.tags,
+            f.retest_status.map(|r| r.as_str()),
+            f.retest_date,
+            c.custom_fields,
+            c.mappings,
             f.created_at,
             f.updated_at,
             f.deleted_at,
@@ -349,6 +392,8 @@ pub fn create(conn: &Connection, report_id: &str, input: NewFinding) -> AppResul
     let remediation = input.remediation.unwrap_or_default();
     let refs = input.refs.unwrap_or_default();
     let tags = input.tags.unwrap_or_default();
+    let custom_fields = input.custom_fields.unwrap_or_default();
+    let mappings = input.mappings.unwrap_or_default();
 
     conn.execute(
         r#"
@@ -356,12 +401,14 @@ pub fn create(conn: &Connection, report_id: &str, input: NewFinding) -> AppResul
             (id, report_id, sort_order, title, severity, confidence, kind,
              cwe, cve, cvss_vector, cvss_score, triage_status, triage_note,
              description, remediation, evidence, poc, refs, tags,
+             retest_status, retest_date, custom_fields, mappings,
              created_at, updated_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7,
              ?8, ?9, ?10, ?11, ?12, ?13,
              ?14, ?15, ?16, ?17, ?18, ?19,
-             ?20, ?20)
+             ?20, ?21, ?22, ?23,
+             ?24, ?24)
         "#,
         params![
             id,
@@ -387,6 +434,10 @@ pub fn create(conn: &Connection, report_id: &str, input: NewFinding) -> AppResul
             input.poc.as_ref().map(serde_json::to_string).transpose()?,
             serde_json::to_string(&refs)?,
             serde_json::to_string(&tags)?,
+            input.retest_status.map(|r| r.as_str()),
+            input.retest_date,
+            serde_json::to_string(&custom_fields)?,
+            serde_json::to_string(&mappings)?,
             now,
         ],
     )?;
@@ -429,6 +480,8 @@ pub fn create_bulk(
         let remediation = input.remediation.unwrap_or_default();
         let refs = input.refs.unwrap_or_default();
         let tags = input.tags.unwrap_or_default();
+        let custom_fields = input.custom_fields.unwrap_or_default();
+        let mappings = input.mappings.unwrap_or_default();
 
         tx.execute(
             r#"
@@ -436,12 +489,14 @@ pub fn create_bulk(
                 (id, report_id, sort_order, title, severity, confidence, kind,
                  cwe, cve, cvss_vector, cvss_score, triage_status, triage_note,
                  description, remediation, evidence, poc, refs, tags,
+                 retest_status, retest_date, custom_fields, mappings,
                  created_at, updated_at)
             VALUES
                 (?1, ?2, ?3, ?4, ?5, ?6, ?7,
                  ?8, ?9, ?10, ?11, ?12, ?13,
                  ?14, ?15, ?16, ?17, ?18, ?19,
-                 ?20, ?20)
+                 ?20, ?21, ?22, ?23,
+                 ?24, ?24)
             "#,
             params![
                 id,
@@ -467,6 +522,10 @@ pub fn create_bulk(
                 input.poc.as_ref().map(serde_json::to_string).transpose()?,
                 serde_json::to_string(&refs)?,
                 serde_json::to_string(&tags)?,
+                input.retest_status.map(|r| r.as_str()),
+                input.retest_date.clone(),
+                serde_json::to_string(&custom_fields)?,
+                serde_json::to_string(&mappings)?,
                 now,
             ],
         )?;
@@ -559,6 +618,23 @@ pub fn update(conn: &Connection, id: &str, patch: FindingPatch) -> AppResult<Fin
         sets.push("tags = ?");
         vals.push(Box::new(serde_json::to_string(&tags)?));
     }
+    if let Some(rs) = patch.retest_status {
+        // Some(None) clears (NULL); Some(Some(v)) sets the snake_case string.
+        sets.push("retest_status = ?");
+        vals.push(Box::new(rs.map(|r| r.as_str().to_string())));
+    }
+    if let Some(rd) = patch.retest_date {
+        sets.push("retest_date = ?");
+        vals.push(Box::new(rd)); // Option<String> -> NULL when None
+    }
+    if let Some(cf) = patch.custom_fields {
+        sets.push("custom_fields = ?");
+        vals.push(Box::new(serde_json::to_string(&cf)?));
+    }
+    if let Some(maps) = patch.mappings {
+        sets.push("mappings = ?");
+        vals.push(Box::new(serde_json::to_string(&maps)?));
+    }
 
     let sql = format!("UPDATE findings SET {} WHERE id = ?", sets.join(", "));
     vals.push(Box::new(id.to_string()));
@@ -588,6 +664,101 @@ pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
         params![now, id],
     )?;
     Ok(())
+}
+
+/// Deep-copy a finding within its OWN report: a fresh-UUID finding (title +
+/// " (copy)", appended at the next sort order) carrying every authored field
+/// EXCEPT the retest disposition, which is reset (a clone is a fresh assessment).
+/// Its evidence images (bytes copied) and affected-asset links (same report, so
+/// the asset ids are reused) are copied too. Runs in one transaction; returns
+/// the new finding.
+pub fn clone_finding(conn: &mut Connection, finding_id: &str) -> AppResult<Finding> {
+    // Read the source (live only) first to fail fast with NotFound.
+    let src = get(conn, finding_id)?;
+    let now = now_rfc3339();
+    let new_id = Uuid::new_v4().to_string();
+
+    let tx = conn.transaction()?;
+    {
+        let c: &Connection = &tx;
+        let sort_order = next_sort_order(c, &src.report_id)?;
+
+        // Build the clone: reset retest fields, fresh id/sort_order/timestamps.
+        let clone = Finding {
+            id: new_id.clone(),
+            report_id: src.report_id.clone(),
+            sort_order,
+            title: format!("{} (copy)", src.title),
+            retest_status: None,
+            retest_date: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            deleted_at: None,
+            ..src.clone()
+        };
+        insert_raw(c, &clone)?;
+
+        // Copy the source's evidence images (bytes + metadata) under the clone.
+        copy_evidence_images(c, finding_id, &new_id, &now)?;
+
+        // Re-link the same assets (the clone lives in the same report).
+        for aid in live_finding_asset_ids(c, finding_id)? {
+            link_finding_asset(c, &new_id, &aid)?;
+        }
+    }
+    tx.commit()?;
+
+    get(conn, &new_id)
+}
+
+/// Copy every LIVE evidence image of `src_finding_id` to `dst_finding_id` with
+/// fresh image ids, preserving caption/mime/sort_order and the raw bytes. Shared
+/// by [`clone_finding`] and `db::reports::clone_report`.
+pub(crate) fn copy_evidence_images(
+    conn: &Connection,
+    src_finding_id: &str,
+    dst_finding_id: &str,
+    now: &str,
+) -> AppResult<()> {
+    let mut stmt = conn.prepare(
+        "SELECT caption, mime, data, sort_order FROM evidence_images \
+         WHERE finding_id = ?1 AND deleted_at IS NULL ORDER BY sort_order, created_at",
+    )?;
+    let mut rows = stmt.query(params![src_finding_id])?;
+    while let Some(row) = rows.next()? {
+        let caption: String = row.get("caption")?;
+        let mime: String = row.get("mime")?;
+        let data: Vec<u8> = row.get("data")?;
+        let sort_order: i64 = row.get("sort_order")?;
+        let img_id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO evidence_images \
+                (id, finding_id, caption, mime, data, sort_order, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![img_id, dst_finding_id, caption, mime, data, sort_order, now],
+        )?;
+    }
+    Ok(())
+}
+
+/// The live asset ids linked to a finding (filters tombstoned assets), ordered
+/// by the asset sort order. Used by the clone paths to re-link assets.
+pub(crate) fn live_finding_asset_ids(
+    conn: &Connection,
+    finding_id: &str,
+) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id FROM finding_assets fa \
+         JOIN assets a ON a.id = fa.asset_id \
+         WHERE fa.finding_id = ?1 AND a.deleted_at IS NULL \
+         ORDER BY a.sort_order, a.created_at",
+    )?;
+    let mut rows = stmt.query(params![finding_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row.get(0)?);
+    }
+    Ok(out)
 }
 
 /// Re-assign `sort_order` to match the given id ordering. Ids not belonging to

@@ -231,6 +231,7 @@ mod tests {
             engagement_ref: Some("PO-42".into()),
             confidentiality: Some("Confidential".into()),
             has_logo: false,
+            custom_fields: std::collections::BTreeMap::new(),
             created_at: "2026-06-12T10:00:00+00:00".into(),
             updated_at: "2026-06-12T11:00:00+00:00".into(),
             deleted_at: None,
@@ -273,6 +274,18 @@ mod tests {
             }),
             refs: vec!["https://owasp.org".into()],
             tags: vec!["web".into()],
+            retest_status: Some(crate::models::RetestStatus::Fixed),
+            retest_date: Some("2026-07-01".into()),
+            custom_fields: {
+                let mut m = std::collections::BTreeMap::new();
+                m.insert("ticket".to_string(), "JIRA-1".to_string());
+                m
+            },
+            mappings: vec![crate::models::Mapping {
+                framework: "OWASP".into(),
+                id: "A03:2021".into(),
+                name: Some("Injection".into()),
+            }],
             created_at: "2026-06-12T10:00:00+00:00".into(),
             updated_at: "2026-06-12T10:30:00+00:00".into(),
             deleted_at: None,
@@ -326,6 +339,21 @@ mod tests {
         assert_eq!(back.finding_asset_links[0].asset_id, "a-1");
         assert_eq!(back.findings.len(), 1);
         assert_eq!(back.findings[0].cwe.as_deref(), Some("CWE-89"));
+        // v7 fields (retest / custom_fields / mappings) round-trip.
+        assert_eq!(
+            back.findings[0].retest_status,
+            Some(crate::models::RetestStatus::Fixed)
+        );
+        assert_eq!(back.findings[0].retest_date.as_deref(), Some("2026-07-01"));
+        assert_eq!(
+            back.findings[0]
+                .custom_fields
+                .get("ticket")
+                .map(String::as_str),
+            Some("JIRA-1")
+        );
+        assert_eq!(back.findings[0].mappings.len(), 1);
+        assert_eq!(back.findings[0].mappings[0].id, "A03:2021");
         assert_eq!(
             back.findings[0].poc.as_ref().unwrap().payload.as_deref(),
             Some("' OR 1=1")

@@ -35,6 +35,14 @@ pub fn delete_finding(state: State<'_, AppState>, id: String) -> AppResult<()> {
     state.with_conn(|conn| db::findings::delete(conn, &id))
 }
 
+/// Copy a finding within its own report (fresh id, title + " (copy)", appended
+/// at the next sort order), including its evidence images and asset links. The
+/// clone's retest status is reset. Returns the new finding.
+#[tauri::command]
+pub fn clone_finding(state: State<'_, AppState>, id: String) -> AppResult<Finding> {
+    state.with_conn_mut(|conn| db::findings::clone_finding(conn, &id))
+}
+
 #[tauri::command]
 pub fn reorder_findings(
     state: State<'_, AppState>,

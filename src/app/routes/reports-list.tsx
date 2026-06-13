@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { BookMarked, FileText, Plus, Trash2, Lock, Settings as SettingsIcon } from "lucide-react";
+import {
+  BookMarked,
+  Copy,
+  FileText,
+  Plus,
+  Trash2,
+  Lock,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,7 +39,12 @@ import { ReportLanguageSelect } from "@/components/report-language-select";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
 import { SUPPORTED_LANGUAGES } from "@/i18n";
-import { useCreateReport, useDeleteReport, useReports } from "@/lib/queries/use-reports";
+import {
+  useCloneReport,
+  useCreateReport,
+  useDeleteReport,
+  useReports,
+} from "@/lib/queries/use-reports";
 import { useLockVault } from "@/lib/queries/use-vault";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { errorMessage } from "@/lib/ipc";
@@ -158,6 +171,7 @@ export function ReportsList() {
   const navigate = useNavigate();
   const { data: reports, isLoading } = useReports();
   const deleteReport = useDeleteReport();
+  const cloneReport = useCloneReport();
   const lockVault = useLockVault();
   const undoableDelete = useUndoableDelete();
 
@@ -166,6 +180,17 @@ export function ReportsList() {
   const requestDelete = (report: ReportSummary, e: React.MouseEvent) => {
     e.stopPropagation();
     setPendingDelete(report);
+  };
+
+  const handleDuplicate = (report: ReportSummary, e: React.MouseEvent) => {
+    e.stopPropagation();
+    cloneReport.mutate(report.id, {
+      onSuccess: (copy) => {
+        toast.success(t("reports.duplicated", { title: report.title }));
+        navigate(`/reports/${copy.id}`);
+      },
+      onError: (err) => toast.error(errorMessage(err, "reports.duplicateError")),
+    });
   };
 
   const confirmDelete = () => {
@@ -276,16 +301,27 @@ export function ReportsList() {
                   <CardContent className="space-y-3 p-5">
                     <div className="flex items-start justify-between gap-2">
                       <ReportTypeBadge type={r.report_type} />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="opacity-0 transition-opacity group-hover:opacity-100"
-                        title={t("common.delete")}
-                        aria-label={t("common.delete")}
-                        onClick={(e) => requestDelete(r, e)}
-                      >
-                        <Trash2 />
-                      </Button>
+                      <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t("common.duplicate")}
+                          aria-label={t("common.duplicate")}
+                          disabled={cloneReport.isPending}
+                          onClick={(e) => handleDuplicate(r, e)}
+                        >
+                          <Copy />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t("common.delete")}
+                          aria-label={t("common.delete")}
+                          onClick={(e) => requestDelete(r, e)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </div>
                     <div>
                       <h3 className="font-semibold leading-snug">{r.title}</h3>

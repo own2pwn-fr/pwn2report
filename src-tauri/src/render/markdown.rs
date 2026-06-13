@@ -125,6 +125,12 @@ pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String 
         out.push_str("\n\n");
     }
 
+    // Report-level custom fields.
+    if !doc.custom_fields.is_empty() {
+        out.push_str(&format!("## {}\n\n", l.custom_fields));
+        push_custom_fields(&mut out, &doc.custom_fields, l);
+    }
+
     if !doc.findings.is_empty() {
         out.push_str(&format!("## {}\n\n", l.detailed_findings));
         for (i, f) in doc.findings.iter().enumerate() {
@@ -181,6 +187,19 @@ fn push_finding(
         out.push('\n');
     } else if !f.cvss_vector.is_empty() {
         out.push_str(&format!("`{}`\n\n", f.cvss_vector));
+    }
+
+    // Retest status badge (when recorded).
+    if f.has_retest {
+        let date = if f.retest_date.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", f.retest_date)
+        };
+        out.push_str(&format!(
+            "**{}:** {}{}\n\n",
+            l.retest, f.retest_status_label, date
+        ));
     }
 
     facet(out, l.summary, &f.summary);
@@ -275,11 +294,45 @@ fn push_finding(
         }
     }
 
+    // Compliance / framework mappings.
+    if !f.mappings.is_empty() {
+        out.push_str(&format!("**{}**\n\n", l.mappings));
+        for m in &f.mappings {
+            let name = if m.name.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", m.name)
+            };
+            out.push_str(&format!("- **{}:** {}{}\n", m.framework, m.id, name));
+        }
+        out.push('\n');
+    }
+
+    // Per-finding custom fields table.
+    push_custom_fields(out, &f.custom_fields, l);
+
     if !f.tags.is_empty() {
         out.push_str(&format!("{}: {}\n\n", l.tags, f.tags.join(", ")));
     }
 
     out.push_str("---\n\n");
+}
+
+/// Emit a `(Field | Value)` table for a list of custom fields (no-op when empty).
+fn push_custom_fields(
+    out: &mut String,
+    fields: &[super::content_model::CustomFieldInput],
+    l: &Labels,
+) {
+    if fields.is_empty() {
+        return;
+    }
+    out.push_str(&format!("**{}**\n\n", l.custom_fields));
+    out.push_str(&format!("| {} | {} |\n| --- | --- |\n", l.field, l.value));
+    for cf in fields {
+        out.push_str(&format!("| {} | {} |\n", cf.field, cf.value));
+    }
+    out.push('\n');
 }
 
 /// Sanitize a caption for use as Markdown image alt text (strip the bracket
@@ -360,6 +413,46 @@ mod tests {
     use super::*;
     use crate::render::content_model::build_document;
     use crate::test_fixtures::{sample_finding, sample_report};
+
+    #[test]
+    fn markdown_renders_retest_mappings_and_custom_fields() {
+        use crate::models::{Mapping, RetestStatus};
+        let mut report = sample_report();
+        report
+            .custom_fields
+            .insert("Engagement code".into(), "ENG-7".into());
+        let mut finding = sample_finding();
+        finding.retest_status = Some(RetestStatus::PartiallyFixed);
+        finding.retest_date = Some("2026-07-01".into());
+        finding.mappings = vec![Mapping {
+            framework: "OWASP".into(),
+            id: "A03:2021".into(),
+            name: Some("Injection".into()),
+        }];
+        finding
+            .custom_fields
+            .insert("Ticket".into(), "JIRA-42".into());
+
+        let doc = build_document(
+            &report,
+            vec![finding],
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            None,
+        );
+        let md = to_markdown(&doc);
+        // Per-finding retest badge.
+        assert!(md.contains("**Retest:** Partially fixed (2026-07-01)"));
+        // Mappings.
+        assert!(md.contains("References to frameworks"));
+        assert!(md.contains("**OWASP:** A03:2021 — Injection"));
+        // Per-finding custom fields table.
+        assert!(md.contains("| Ticket | JIRA-42 |"));
+        // Report-level custom fields section.
+        assert!(md.contains("## Custom fields"));
+        assert!(md.contains("| Engagement code | ENG-7 |"));
+    }
 
     #[test]
     fn markdown_includes_title_summary_table_and_findings() {

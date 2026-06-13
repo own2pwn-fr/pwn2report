@@ -135,6 +135,10 @@ fn parse_line(line: &str) -> AppResult<Option<NewFinding>> {
         poc: None,
         refs: Some(refs),
         tags: Some(vec!["imported".into(), "nuclei".into()]),
+        retest_status: None,
+        retest_date: None,
+        custom_fields: None,
+        mappings: None,
     }))
 }
 

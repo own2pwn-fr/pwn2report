@@ -1,5 +1,7 @@
 //! Report model + list-summary + create/patch payloads.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Default report language (used when a row / payload omits `language`).
@@ -91,6 +93,10 @@ pub struct Report {
     /// `get_report_logo` command); only this presence flag crosses IPC.
     #[serde(default)]
     pub has_logo: bool,
+    /// Arbitrary user-defined fields (string → string), stored as a JSON object
+    /// column (schema v7). Defaults to an empty map.
+    #[serde(default)]
+    pub custom_fields: BTreeMap<String, String>,
     pub created_at: String,
     pub updated_at: String,
     /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
@@ -158,4 +164,7 @@ pub struct ReportPatch {
     pub engagement_ref: Option<Option<String>>,
     #[serde(default, deserialize_with = "super::double_option")]
     pub confidentiality: Option<Option<String>>,
+    /// Replace-on-present: the whole custom-fields map is replaced when present.
+    #[serde(default)]
+    pub custom_fields: Option<BTreeMap<String, String>>,
 }

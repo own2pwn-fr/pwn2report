@@ -45,3 +45,11 @@ export function useDeleteReport() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.reports }),
   });
 }
+
+export function useCloneReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => ipc.cloneReport(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.reports }),
+  });
+}

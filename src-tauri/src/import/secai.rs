@@ -78,6 +78,10 @@ impl From<SecaiFinding> for NewFinding {
             poc: s.poc,
             refs: s.refs,
             tags: Some(tags),
+            retest_status: None,
+            retest_date: None,
+            custom_fields: None,
+            mappings: None,
         }
     }
 }

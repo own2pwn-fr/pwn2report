@@ -154,6 +154,10 @@ pub fn parse(content: &str) -> AppResult<Vec<NewFinding>> {
                 poc: None,
                 refs: Some(references),
                 tags: Some(vec!["imported".into(), "nessus".into()]),
+                retest_status: None,
+                retest_date: None,
+                custom_fields: None,
+                mappings: None,
             });
         }
     }

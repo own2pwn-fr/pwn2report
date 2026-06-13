@@ -225,6 +225,44 @@
   })))
 }
 
+// A finding's retest status badge (`f.has_retest` / `f.retest_status_label` /
+// `f.retest_date`). No-ops when no retest is recorded. `label` is the localized
+// "Retest" heading.
+#let retest-badge(f, label) = {
+  if "has_retest" not in f or not f.has_retest { return }
+  let value = f.retest_status_label
+  if f.retest_date != "" { value = value + " (" + f.retest_date + ")" }
+  block(spacing: 6pt, text(size: 10pt,
+    text(weight: "semibold", fill: accent, label + ": ") + value))
+}
+
+// A finding's compliance/framework mappings (`f.mappings`, each
+// `(framework, id, name)`). No-ops when empty. `label` is the localized
+// "References to frameworks" heading.
+#let mappings-block(f, label) = {
+  if "mappings" not in f or f.mappings.len() == 0 { return }
+  block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, label))
+  block(spacing: 8pt, list(..f.mappings.map(m => {
+    let head = text(weight: "semibold", m.framework + ": ")
+    head + m.id + (if m.name != "" { " — " + m.name } else { "" })
+  })))
+}
+
+// A two-column custom-fields table (`fields`, each `(field, value)`). No-ops
+// when empty. `labels` is the injected localized label dict (uses
+// `labels.custom_fields`, `labels.field`, `labels.value`).
+#let custom-fields-table(fields, labels) = {
+  if fields.len() == 0 { return }
+  block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, labels.custom_fields))
+  block(spacing: 8pt, table(
+    columns: (auto, 1fr),
+    stroke: 0.5pt + luma(220),
+    inset: 6pt,
+    text(weight: "bold", labels.field), text(weight: "bold", labels.value),
+    ..fields.map(cf => (cf.field, cf.value)).flatten(),
+  ))
+}
+
 // The per-severity summary table (counts + total). `labels` is the injected
 // localized label dict (`doc.labels`); the total row uses `labels.total`.
 #let severity-summary-table(summary, labels) = {

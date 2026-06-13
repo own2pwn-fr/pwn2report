@@ -6,6 +6,21 @@ export type TriageStatus = "open" | "acknowledged" | "false_positive" | "resolve
 export type ReportType = "web_pentest" | "code_audit" | "red_team";
 export type FindingKind = "manual" | "sast" | "iac" | "sca" | "secret";
 
+/** Outcome of a retest pass over a previously reported finding. */
+export type RetestStatus =
+  | "not_retested"
+  | "fixed"
+  | "partially_fixed"
+  | "not_fixed"
+  | "risk_accepted";
+
+/** A compliance/framework mapping attached to a finding (e.g. OWASP A03:2021). */
+export interface Mapping {
+  framework: string;
+  id: string;
+  name?: string | null;
+}
+
 export interface FindingDescription {
   summary: string;
   root_cause: string;
@@ -53,6 +68,14 @@ export interface Finding {
   poc: StructuredPoc | null;
   refs: string[];
   tags: string[];
+  /** Retest outcome for this finding. `null` / `"not_retested"` when never retested. */
+  retest_status?: RetestStatus | null;
+  /** ISO date (YYYY-MM-DD) the retest was performed. */
+  retest_date?: string | null;
+  /** Free-form key/value metadata. */
+  custom_fields: Record<string, string>;
+  /** Compliance / framework mappings. */
+  mappings: Mapping[];
   created_at: string;
   updated_at: string;
 }
@@ -78,6 +101,8 @@ export interface Report {
   confidentiality?: string;
   /** Whether a branding logo has been uploaded for this report's cover. */
   has_logo: boolean;
+  /** Free-form key/value metadata for the report. */
+  custom_fields: Record<string, string>;
   created_at: string;
   updated_at: string;
 }
@@ -171,6 +196,10 @@ export interface NewFinding {
   poc?: StructuredPoc | null;
   refs?: string[];
   tags?: string[];
+  retest_status?: RetestStatus | null;
+  retest_date?: string | null;
+  custom_fields?: Record<string, string>;
+  mappings?: Mapping[];
 }
 
 /** Template metadata returned by `list_templates`. */
@@ -198,6 +227,7 @@ export type ReportPatch = Partial<
     | "reviewer"
     | "engagement_ref"
     | "confidentiality"
+    | "custom_fields"
   >
 >;
 
@@ -220,6 +250,10 @@ export type FindingPatch = Partial<
     | "poc"
     | "refs"
     | "tags"
+    | "retest_status"
+    | "retest_date"
+    | "custom_fields"
+    | "mappings"
   >
 >;
 

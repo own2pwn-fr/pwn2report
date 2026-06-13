@@ -15,7 +15,7 @@
 // Robust to missing optional fields: the IR flattens them to "" / empty arrays.
 
 #import sys: inputs
-#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images, scope-table, affected-assets
+#import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, severity-distribution-bar, findings-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images, scope-table, affected-assets, retest-badge, mappings-block, custom-fields-table
 
 #let doc = inputs
 // Localized label dict injected by the Rust render IR (doc.labels.*).
@@ -81,6 +81,12 @@
   block(prose(doc.methodology))
 }
 
+// Report-level custom fields.
+#if "custom_fields" in doc and doc.custom_fields.len() > 0 {
+  heading(level: 1, l.custom_fields)
+  custom-fields-table(doc.custom_fields, l)
+}
+
 // ---------------------------------------------------------------------------
 // Findings — attack-narrative layout
 // ---------------------------------------------------------------------------
@@ -95,6 +101,9 @@
   for (i, f) in doc.findings.enumerate() {
     finding-heading(i + 1, f)
     finding-meta(f, l)
+
+    // Retest status badge (when recorded).
+    retest-badge(f, l.retest)
 
     // Lead with the scenario — the story of the attack.
     if f.has_poc and f.poc_scenario != "" {
@@ -143,6 +152,12 @@
       code-block(f.code_patch)
       references-block(f.remediation_refs, l.references)
     }
+
+    // Compliance / framework mappings.
+    mappings-block(f, l.mappings)
+
+    // Per-finding custom fields.
+    custom-fields-table(f.custom_fields, l)
 
     // Tags.
     if f.tags.len() > 0 {

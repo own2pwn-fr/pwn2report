@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Plus, X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,10 @@ import {
 import { CvssCalculator } from "@/components/cvss-calculator";
 import { EvidenceGallery } from "@/components/evidence/evidence-gallery";
 import { FindingAssetsField } from "@/components/findings/finding-assets-field";
+import { MappingsEditor } from "@/components/findings/mappings-editor";
+import { KeyValueEditor } from "@/components/ui/key-value-editor";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
+import { cn } from "@/lib/utils";
 import { useFindingAssets } from "@/lib/queries/use-finding-assets";
 import {
   emptyState,
@@ -46,6 +49,7 @@ import type {
   FindingKind,
   FindingPatch,
   NewFinding,
+  RetestStatus,
   Severity,
   TriageStatus,
 } from "@/lib/types";
@@ -56,6 +60,13 @@ const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 const CONFIDENCES: Confidence[] = ["high", "medium", "low"];
 const KINDS: FindingKind[] = ["manual", "sast", "iac", "sca", "secret"];
 const TRIAGE: TriageStatus[] = ["open", "acknowledged", "false_positive", "resolved"];
+const RETEST: RetestStatus[] = [
+  "not_retested",
+  "fixed",
+  "partially_fixed",
+  "not_fixed",
+  "risk_accepted",
+];
 
 // ── Small presentational helpers ─────────────────────────────────────────────
 
@@ -66,6 +77,55 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         {title}
       </h3>
       {children}
+    </section>
+  );
+}
+
+/**
+ * A collapsible variant of `Section` for optional, lower-traffic groups (retest,
+ * mappings, custom fields) so the form stays light by default.
+ */
+function CollapsibleFormSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="rounded-lg border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 p-4 text-left"
+      >
+        <ChevronDown
+          className={cn(
+            "size-4 text-muted-foreground transition-transform",
+            open ? "rotate-0" : "-rotate-90",
+          )}
+        />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="space-y-3 px-4 pb-4">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
@@ -656,6 +716,56 @@ export function FindingForm({
                 onChange={(next) => set("tags", next)}
               />
             </Section>
+
+            {/* ── Retest ────────────────────────────────────────────────────── */}
+            <CollapsibleFormSection title={t("findings.section.retest")}>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>{t("findings.fieldRetestStatus")}</Label>
+                  <Select
+                    value={state.retest_status}
+                    onValueChange={(v) => set("retest_status", v as RetestStatus)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RETEST.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {t(`retest.${r}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="f-retest-date">{t("findings.fieldRetestDate")}</Label>
+                  <Input
+                    id="f-retest-date"
+                    type="date"
+                    value={state.retest_date}
+                    onChange={(e) => set("retest_date", e.target.value)}
+                    disabled={state.retest_status === "not_retested"}
+                  />
+                </div>
+              </div>
+            </CollapsibleFormSection>
+
+            {/* ── Compliance mappings ───────────────────────────────────────── */}
+            <CollapsibleFormSection title={t("findings.section.mappings")}>
+              <MappingsEditor
+                value={state.mappings}
+                onChange={(next) => set("mappings", next)}
+              />
+            </CollapsibleFormSection>
+
+            {/* ── Custom fields ─────────────────────────────────────────────── */}
+            <CollapsibleFormSection title={t("findings.section.customFields")}>
+              <KeyValueEditor
+                value={state.custom_fields}
+                onChange={(next) => set("custom_fields", next)}
+              />
+            </CollapsibleFormSection>
 
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={requestClose}>

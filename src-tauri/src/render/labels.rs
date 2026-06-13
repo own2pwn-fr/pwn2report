@@ -146,6 +146,25 @@ pub struct Labels {
     pub asset_credential: &'static str,
     pub asset_other: &'static str,
 
+    // Retest workflow (schema v7).
+    /// "Retest" badge/section label.
+    pub retest: &'static str,
+    pub retest_not_retested: &'static str,
+    pub retest_fixed: &'static str,
+    pub retest_partially_fixed: &'static str,
+    pub retest_not_fixed: &'static str,
+    pub retest_risk_accepted: &'static str,
+
+    // Compliance mappings + custom fields (schema v7).
+    /// "Mappings" / "References to frameworks" section heading.
+    pub mappings: &'static str,
+    /// "Custom fields" section heading.
+    pub custom_fields: &'static str,
+    /// "Field" column header (custom-fields table).
+    pub field: &'static str,
+    /// "Value" column header (custom-fields table).
+    pub value: &'static str,
+
     // Fallbacks.
     pub no_findings: &'static str,
 }
@@ -248,6 +267,18 @@ const EN: Labels = Labels {
     asset_credential: "Credential",
     asset_other: "Other",
 
+    retest: "Retest",
+    retest_not_retested: "Not retested",
+    retest_fixed: "Fixed",
+    retest_partially_fixed: "Partially fixed",
+    retest_not_fixed: "Not fixed",
+    retest_risk_accepted: "Risk accepted",
+
+    mappings: "References to frameworks",
+    custom_fields: "Custom fields",
+    field: "Field",
+    value: "Value",
+
     no_findings: "No findings recorded for this report.",
 };
 
@@ -348,6 +379,18 @@ const FR: Labels = Labels {
     asset_domain: "Domaine",
     asset_credential: "Identifiant",
     asset_other: "Autre",
+
+    retest: "Contre-test",
+    retest_not_retested: "Non recontrôlé",
+    retest_fixed: "Corrigé",
+    retest_partially_fixed: "Partiellement corrigé",
+    retest_not_fixed: "Non corrigé",
+    retest_risk_accepted: "Risque accepté",
+
+    mappings: "Références aux référentiels",
+    custom_fields: "Champs personnalisés",
+    field: "Champ",
+    value: "Valeur",
 
     no_findings: "Aucune vulnérabilité enregistrée pour ce rapport.",
 };

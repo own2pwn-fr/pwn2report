@@ -392,3 +392,96 @@ fn e2e_aggregate_layer_sync_roundtrip() {
     let _ = std::fs::remove_file(&src_path);
     let _ = std::fs::remove_file(&dst_path);
 }
+
+/// Cloning a report deep-copies its children with fresh ids: scope, assets,
+/// findings (with evidence images + remapped asset links), and the logo; the
+/// clone's findings have their retest disposition reset.
+#[test]
+fn e2e_clone_report_deep_copies_children() {
+    let path = tmp("clone-report");
+    let mut conn = connection::create_encrypted(&path, "master-pass").unwrap();
+    let (report_id, finding_id) = seed_report_with_finding(&conn);
+
+    // Give the finding a retest status (must be CLEARED on the clone) + an image.
+    let patch: crate::models::FindingPatch =
+        serde_json::from_value(json!({"retest_status": "fixed", "retest_date": "2026-07-01"}))
+            .unwrap();
+    db::findings::update(&conn, &finding_id, patch).unwrap();
+    db::evidence::add(&conn, &finding_id, "shot", "image/png", &png_1x1()).unwrap();
+
+    // An asset linked to the finding (link must remap to the cloned asset).
+    let na: crate::models::NewAsset =
+        serde_json::from_value(json!({"identifier": "https://app.example.com", "kind": "url"}))
+            .unwrap();
+    let asset = db::assets::create(&conn, &report_id, na).unwrap();
+    db::findings::set_finding_assets(&mut conn, &finding_id, std::slice::from_ref(&asset.id))
+        .unwrap();
+
+    // A scope item + a report logo.
+    let ns: crate::models::NewScopeItem =
+        serde_json::from_value(json!({"value": "app.example.com", "kind": "domain"})).unwrap();
+    db::scope::create(&conn, &report_id, ns).unwrap();
+    db::reports::set_logo(&conn, &report_id, "image/png", &png_1x1()).unwrap();
+
+    // Clone.
+    let clone = db::reports::clone_report(&mut conn, &report_id).unwrap();
+    assert_ne!(clone.id, report_id);
+    assert!(clone.title.ends_with(" (copy)"));
+    assert!(clone.has_logo);
+
+    // Children: one finding, retest reset, image copied, asset re-linked.
+    let cfindings = db::findings::list(&conn, &clone.id).unwrap();
+    assert_eq!(cfindings.len(), 1);
+    let cf = &cfindings[0];
+    assert_ne!(cf.id, finding_id, "finding got a fresh id");
+    assert!(cf.retest_status.is_none(), "retest cleared on clone");
+    assert!(cf.retest_date.is_none());
+
+    let cimgs = db::evidence::list(&conn, &cf.id).unwrap();
+    assert_eq!(cimgs.len(), 1, "evidence image copied");
+
+    let cassets = db::assets::list(&conn, &clone.id).unwrap();
+    assert_eq!(cassets.len(), 1);
+    assert_ne!(cassets[0].id, asset.id, "asset got a fresh id");
+    let linked = db::findings::list_finding_assets(&conn, &cf.id).unwrap();
+    assert_eq!(linked.len(), 1);
+    assert_eq!(linked[0].id, cassets[0].id, "link remapped to cloned asset");
+
+    let cscope = db::scope::list(&conn, &clone.id).unwrap();
+    assert_eq!(cscope.len(), 1);
+
+    // The original is untouched (its finding keeps its retest status).
+    let orig = db::findings::get(&conn, &finding_id).unwrap();
+    assert_eq!(orig.retest_status, Some(crate::models::RetestStatus::Fixed));
+
+    let _ = std::fs::remove_file(&path);
+}
+
+/// Cloning a finding copies it within the same report with a fresh id, appended
+/// sort order, copied evidence, and a reset retest status.
+#[test]
+fn e2e_clone_finding_within_report() {
+    let path = tmp("clone-finding");
+    let mut conn = connection::create_encrypted(&path, "master-pass").unwrap();
+    let (report_id, finding_id) = seed_report_with_finding(&conn);
+    let patch: crate::models::FindingPatch =
+        serde_json::from_value(json!({"retest_status": "not_fixed"})).unwrap();
+    db::findings::update(&conn, &finding_id, patch).unwrap();
+    db::evidence::add(&conn, &finding_id, "shot", "image/png", &png_1x1()).unwrap();
+
+    let clone = db::findings::clone_finding(&mut conn, &finding_id).unwrap();
+    assert_ne!(clone.id, finding_id);
+    assert_eq!(clone.report_id, report_id, "stays in the same report");
+    assert!(clone.title.ends_with(" (copy)"));
+    assert!(clone.retest_status.is_none(), "retest reset");
+    assert!(clone.sort_order > 0, "appended after the source");
+
+    let cimgs = db::evidence::list(&conn, &clone.id).unwrap();
+    assert_eq!(cimgs.len(), 1, "evidence image copied");
+
+    // Report now has two findings.
+    let all = db::findings::list(&conn, &report_id).unwrap();
+    assert_eq!(all.len(), 2);
+
+    let _ = std::fs::remove_file(&path);
+}

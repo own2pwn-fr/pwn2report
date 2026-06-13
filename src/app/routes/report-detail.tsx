@@ -10,6 +10,7 @@ import {
   ListChecks,
   Plus,
   Server,
+  SlidersHorizontal,
   Users,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -31,12 +32,14 @@ import { KbPicker } from "@/components/findings/kb-picker";
 import { ImportFindingsDialog } from "@/components/findings/import-findings-dialog";
 import { AssetsManager } from "@/components/report/assets-manager";
 import { ScopeManager } from "@/components/report/scope-manager";
+import { KeyValueEditor } from "@/components/ui/key-value-editor";
 import { EngagementMetadata } from "@/components/report/engagement-metadata";
 import { LogoBranding } from "@/components/report/logo-branding";
 import { AiAssistButton } from "@/components/ai/ai-assist-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useReport, useUpdateReport } from "@/lib/queries/use-reports";
 import {
+  useCloneFinding,
   useCreateFinding,
   useCreateFindingFromKb,
   useDeleteFinding,
@@ -167,6 +170,7 @@ export function ReportDetail() {
   const createFinding = useCreateFinding(id ?? "");
   const updateFinding = useUpdateFinding(id ?? "");
   const deleteFinding = useDeleteFinding(id ?? "");
+  const cloneFinding = useCloneFinding(id ?? "");
   const createFromKb = useCreateFindingFromKb(id ?? "");
   const importFindingsM = useImportFindings(id ?? "");
   const setFindingAssets = useSetFindingAssets();
@@ -222,6 +226,12 @@ export function ReportDetail() {
         onError: (err) => toast.error(errorMessage(err)),
       },
     );
+
+  const handleDuplicate = (f: Finding) =>
+    cloneFinding.mutate(f.id, {
+      onSuccess: () => toast.success(t("findings.duplicated", { title: f.title })),
+      onError: (err) => toast.error(errorMessage(err, "findings.duplicateError")),
+    });
 
   const confirmDelete = () => {
     const f = pendingDelete;
@@ -384,6 +394,20 @@ export function ReportDetail() {
         >
           <LogoBranding reportId={report.id} hasLogo={report.has_logo} />
         </CollapsibleSection>
+
+        {/* ── Custom fields ────────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t("customFields.title")}
+          icon={SlidersHorizontal}
+          count={Object.keys(report.custom_fields ?? {}).length || undefined}
+          defaultOpen={false}
+        >
+          <p className="mb-3 text-sm text-muted-foreground">{t("customFields.reportHint")}</p>
+          <KeyValueEditor
+            value={report.custom_fields ?? {}}
+            onChange={(custom_fields) => commit({ custom_fields })}
+          />
+        </CollapsibleSection>
       </div>
 
       <Separator className="my-8" />
@@ -420,7 +444,13 @@ export function ReportDetail() {
         <motion.div layout className="space-y-3">
           <AnimatePresence>
             {sortedFindings.map((f) => (
-              <FindingCard key={f.id} finding={f} onEdit={openEdit} onDelete={setPendingDelete} />
+              <FindingCard
+                key={f.id}
+                finding={f}
+                onEdit={openEdit}
+                onDuplicate={handleDuplicate}
+                onDelete={setPendingDelete}
+              />
             ))}
           </AnimatePresence>
         </motion.div>

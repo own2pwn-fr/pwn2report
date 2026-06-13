@@ -4,7 +4,9 @@ import type {
   Finding,
   FindingKind,
   FindingPatch,
+  Mapping,
   NewFinding,
+  RetestStatus,
   Severity,
   StructuredPoc,
   TriageStatus,
@@ -43,6 +45,12 @@ export interface FindingFormState {
   // misc lists
   refs: string[];
   tags: string[];
+  // retest
+  retest_status: RetestStatus;
+  retest_date: string;
+  // compliance mappings + custom fields
+  mappings: Mapping[];
+  custom_fields: Record<string, string>;
 }
 
 export function emptyState(): FindingFormState {
@@ -74,6 +82,10 @@ export function emptyState(): FindingFormState {
     poc_payload: "",
     refs: [],
     tags: [],
+    retest_status: "not_retested",
+    retest_date: "",
+    mappings: [],
+    custom_fields: {},
   };
 }
 
@@ -106,6 +118,10 @@ export function stateFromFinding(f: Finding): FindingFormState {
     poc_payload: f.poc?.payload ?? "",
     refs: [...f.refs],
     tags: [...f.tags],
+    retest_status: f.retest_status ?? "not_retested",
+    retest_date: f.retest_date ?? "",
+    mappings: f.mappings ? f.mappings.map((m) => ({ ...m })) : [],
+    custom_fields: { ...(f.custom_fields ?? {}) },
   };
 }
 
@@ -137,6 +153,27 @@ function cleanList(items: string[]): string[] {
   return items.map((x) => x.trim()).filter(Boolean);
 }
 
+/** Drop incomplete mappings and trim their fields. */
+function cleanMappings(mappings: Mapping[]): Mapping[] {
+  return mappings
+    .filter((m) => m.framework.trim() && m.id.trim())
+    .map((m) => ({
+      framework: m.framework.trim(),
+      id: m.id.trim(),
+      name: m.name?.trim() ? m.name.trim() : null,
+    }));
+}
+
+/** Drop entries with an empty key and trim their keys. */
+function cleanRecord(record: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(record)) {
+    const key = k.trim();
+    if (key) out[key] = v;
+  }
+  return out;
+}
+
 function commonFields(s: FindingFormState) {
   return {
     severity: s.severity,
@@ -164,6 +201,12 @@ function commonFields(s: FindingFormState) {
     poc: buildPoc(s),
     refs: cleanList(s.refs),
     tags: cleanList(s.tags),
+    retest_status: s.retest_status,
+    // Only carry a date when a retest outcome has actually been recorded.
+    retest_date:
+      s.retest_status !== "not_retested" && s.retest_date.trim() ? s.retest_date.trim() : null,
+    mappings: cleanMappings(s.mappings),
+    custom_fields: cleanRecord(s.custom_fields),
   };
 }
 

@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Retest workflow, cloning, custom fields & compliance mappings
+- **Retest workflow**: per-finding `retest_status`
+  (not_retested/fixed/partially_fixed/not_fixed/risk_accepted) + `retest_date`, shown as a localized badge
+  in PDF/HTML/Markdown exports.
+- **Compliance mappings**: per-finding framework references (`{framework, id, name?}`, e.g. OWASP/PCI/MITRE),
+  rendered as a "References to frameworks" list.
+- **Custom fields**: free-form key/value fields on both reports and findings, rendered as a two-column
+  Field/Value table.
+- **Cloning**: `clone_report` deep-copies a report and all children (scope, assets, findings, evidence image
+  bytes, finding↔asset links remapped to the cloned assets, logo) with fresh ids — retest disposition reset.
+  `clone_finding` duplicates a finding within its report (with evidence + asset links, retest reset).
+- Schema migration to **v7** (idempotent ADD COLUMN). All new columns ride existing reports/findings through
+  encrypted sync (LWW); no bundle version bump needed. New localized labels (EN/FR).
+
 ### Report depth: assets, scope, engagement metadata, branding
 - **Affected-assets model**: a per-report asset inventory (host/ip/url/domain/credential/other) with a
   finding↔asset link, surfaced as an "Affected assets" list per finding and managed in the report.

@@ -42,6 +42,17 @@ export function useDeleteFinding(reportId: string) {
   });
 }
 
+export function useCloneFinding(reportId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => ipc.cloneFinding(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.findings(reportId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.reports });
+    },
+  });
+}
+
 export function useReorderFindings(reportId: string) {
   const qc = useQueryClient();
   return useMutation({

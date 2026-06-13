@@ -122,6 +122,10 @@ export const updateReport = (id: string, patch: ReportPatch) =>
 
 export const deleteReport = (id: string) => invoke<void>("delete_report", { id });
 
+/** Deep-copy a report (with its findings) into a new report. */
+export const cloneReport = (reportId: string) =>
+  invoke<Report>("clone_report", { reportId });
+
 // ── Findings ───────────────────────────────────────────────────────────────
 
 export const listFindings = (reportId: string) =>
@@ -134,6 +138,10 @@ export const updateFinding = (id: string, patch: FindingPatch) =>
   invoke<Finding>("update_finding", { id, patch });
 
 export const deleteFinding = (id: string) => invoke<void>("delete_finding", { id });
+
+/** Duplicate a finding within its report. */
+export const cloneFinding = (findingId: string) =>
+  invoke<Finding>("clone_finding", { findingId });
 
 export const reorderFindings = (reportId: string, orderedIds: string[]) =>
   invoke<void>("reorder_findings", { reportId, orderedIds });

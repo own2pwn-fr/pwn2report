@@ -36,6 +36,15 @@ pub fn delete_report(state: State<'_, AppState>, id: String) -> AppResult<()> {
     state.with_conn(|conn| db::reports::delete(conn, &id))
 }
 
+/// Deep-copy a report and all its children (scope, assets, findings, evidence
+/// images, finding↔asset links, logo) with fresh ids. The clone's title is
+/// suffixed " (copy)" and every finding's retest status is reset. Returns the
+/// new report.
+#[tauri::command]
+pub fn clone_report(state: State<'_, AppState>, id: String) -> AppResult<Report> {
+    state.with_conn_mut(|conn| db::reports::clone_report(conn, &id))
+}
+
 /// Set (or replace) a report's branding logo. `data` is the raw image bytes,
 /// `mime` its content type ("image/png", …).
 #[tauri::command]

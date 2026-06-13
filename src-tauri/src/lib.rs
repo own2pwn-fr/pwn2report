@@ -47,6 +47,7 @@ pub fn run() {
             commands::reports::get_report,
             commands::reports::update_report,
             commands::reports::delete_report,
+            commands::reports::clone_report,
             commands::reports::set_report_logo,
             commands::reports::get_report_logo,
             commands::reports::clear_report_logo,
@@ -68,6 +69,7 @@ pub fn run() {
             commands::findings::create_finding,
             commands::findings::update_finding,
             commands::findings::delete_finding,
+            commands::findings::clone_finding,
             commands::findings::reorder_findings,
             // evidence images
             commands::evidence::add_evidence_image,

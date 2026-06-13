@@ -32,6 +32,7 @@
     "saved": "Enregistré",
     "delete": "Supprimer",
     "edit": "Modifier",
+    "duplicate": "Dupliquer",
     "close": "Fermer",
     "back": "Retour",
     "confirm": "Confirmer",
@@ -96,6 +97,8 @@
     "deleteTitle": "Supprimer le rapport ?",
     "deleteConfirm": "Supprimer ce rapport et toutes ses vulnérabilités ? Cette action est irréversible.",
     "deleted": "« {{title}} » supprimé.",
+    "duplicated": "« {{title}} » dupliqué.",
+    "duplicateError": "Impossible de dupliquer le rapport.",
     "empty": {
       "title": "Aucun rapport pour l'instant",
       "body": "Créez votre premier rapport pour commencer à documenter vos vulnérabilités.",
@@ -232,6 +235,8 @@
     "deleteTitle": "Supprimer la vulnérabilité ?",
     "deleteConfirm": "Supprimer cette vulnérabilité ? Cette action est irréversible.",
     "deleted": "« {{title}} » supprimée.",
+    "duplicated": "« {{title}} » dupliquée.",
+    "duplicateError": "Impossible de dupliquer la vulnérabilité.",
     "createError": "Impossible de créer la vulnérabilité.",
     "addRow": "Ajouter",
     "discard": {
@@ -254,8 +259,13 @@
       "evidence": "Preuves",
       "poc": "Preuve de concept",
       "remediation": "Remédiation",
-      "metadata": "Références et étiquettes"
+      "metadata": "Références et étiquettes",
+      "retest": "Contre-vérification",
+      "mappings": "Correspondances de conformité",
+      "customFields": "Champs personnalisés"
     },
+    "fieldRetestStatus": "Statut de contre-vérification",
+    "fieldRetestDate": "Date de contre-vérification",
     "fieldTitle": "Titre",
     "fieldTitlePlaceholder": "ex. Injection SQL dans le formulaire de connexion",
     "fieldSeverity": "Criticité",
@@ -406,6 +416,39 @@
     "acknowledged": "Reconnue",
     "false_positive": "Faux positif",
     "resolved": "Résolue"
+  },
+  "retest": {
+    "not_retested": "Non contre-vérifiée",
+    "fixed": "Corrigée",
+    "partially_fixed": "Partiellement corrigée",
+    "not_fixed": "Non corrigée",
+    "risk_accepted": "Risque accepté"
+  },
+  "mappings": {
+    "framework": "Référentiel",
+    "id": "Identifiant",
+    "idPlaceholder": "ex. A03:2021",
+    "name": "Nom",
+    "namePlaceholder": "Nom facultatif…",
+    "addRow": "Ajouter une correspondance"
+  },
+  "mappingFramework": {
+    "owasp_top10": "OWASP Top 10",
+    "owasp_asvs": "OWASP ASVS",
+    "mitre_attack": "MITRE ATT&CK",
+    "pci_dss": "PCI DSS",
+    "nist": "NIST",
+    "cwe": "CWE",
+    "custom": "Personnalisé"
+  },
+  "customFields": {
+    "title": "Champs personnalisés",
+    "reportHint": "Métadonnées libres au format clé/valeur associées à ce rapport.",
+    "key": "Clé",
+    "keyPlaceholder": "Clé",
+    "value": "Valeur",
+    "valuePlaceholder": "Valeur",
+    "addRow": "Ajouter un champ"
   },
   "cvss": {
     "score": "Score {{score}}",

@@ -1,20 +1,23 @@
 import { motion } from "motion/react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { SeverityBadge } from "@/components/severity-badge";
+import { RetestBadge } from "@/components/findings/retest-badge";
 import { CvssVector } from "@/components/cvss-vector";
 import type { Finding } from "@/lib/types";
 
 export function FindingCard({
   finding,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   finding: Finding;
   onEdit: (f: Finding) => void;
+  onDuplicate: (f: Finding) => void;
   onDelete: (f: Finding) => void;
 }) {
   const { t } = useTranslation();
@@ -45,6 +48,7 @@ export function FindingCard({
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   {t(`confidence.${finding.confidence}`)} · {t(`triage.${finding.triage_status}`)}
                 </span>
+                <RetestBadge status={finding.retest_status} />
               </div>
               <h3 className="font-semibold leading-snug">{finding.title}</h3>
             </div>
@@ -57,6 +61,15 @@ export function FindingCard({
                 aria-label={t("common.edit")}
               >
                 <Pencil />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onDuplicate(finding)}
+                title={t("common.duplicate")}
+                aria-label={t("common.duplicate")}
+              >
+                <Copy />
               </Button>
               <Button
                 variant="ghost"
