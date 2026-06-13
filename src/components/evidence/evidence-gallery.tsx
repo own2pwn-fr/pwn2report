@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Annotator } from "@/components/evidence/annotator";
 import { EvidenceThumbnail } from "@/components/evidence/evidence-thumbnail";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 import { IMAGE_EXTENSIONS, mimeFromPath, stripImageMetadata } from "@/lib/image";
 import {
   useAddEvidenceImage,
@@ -49,7 +49,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
       const selected = await open({
         multiple: false,
         directory: false,
-        filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }],
+        filters: [{ name: t("evidence.filterImages"), extensions: IMAGE_EXTENSIONS }],
       });
       if (!selected || typeof selected !== "string") return;
       const bytes = await readFile(selected);
@@ -63,7 +63,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
         data: clean.bytes,
       });
     } catch (err) {
-      toast.error(asIpcError(err).message || t("evidence.addError"));
+      toast.error(errorMessage(err, "evidence.addError"));
     }
   };
 
@@ -78,7 +78,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
       const clean = await stripImageMetadata(img.data, img.mime);
       await addImage.mutateAsync({ caption: "", mime: clean.mime, data: clean.bytes });
     } catch (err) {
-      toast.error(asIpcError(err).message || t("evidence.pasteError"));
+      toast.error(errorMessage(err, "evidence.pasteError"));
     }
   };
 
@@ -88,7 +88,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
     const ids = list.map((i) => i.id);
     [ids[index], ids[target]] = [ids[target], ids[index]];
     reorder.mutate(ids, {
-      onError: (err) => toast.error(asIpcError(err).message),
+      onError: (err) => toast.error(errorMessage(err)),
     });
   };
 
@@ -97,7 +97,7 @@ export function EvidenceGallery({ findingId }: { findingId: string }) {
     setPendingDelete(null);
     if (!image) return;
     deleteImage.mutate(image.id, {
-      onError: (err) => toast.error(asIpcError(err).message || t("evidence.deleteError")),
+      onError: (err) => toast.error(errorMessage(err, "evidence.deleteError")),
     });
   };
 

@@ -45,7 +45,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
-import { asIpcError, backupVault, changePassphrase } from "@/lib/ipc";
+import { backupVault, changePassphrase, errorMessage } from "@/lib/ipc";
 import {
   useResetTemplate,
   useSaveTemplate,
@@ -166,7 +166,7 @@ function AiSection() {
           if (keyArg) setHasKey(true);
           toast.success(t("settings.ai.saveSuccess"));
         },
-        onError: (err) => toast.error(asIpcError(err).message || t("settings.ai.saveError")),
+        onError: (err) => toast.error(errorMessage(err, "settings.ai.saveError")),
       },
     );
 
@@ -185,7 +185,7 @@ function AiSection() {
   const handleTest = () => {
     testAi.mutate(undefined, {
       onSuccess: (msg) => toast.success(msg),
-      onError: (err) => toast.error(asIpcError(err).message || t("settings.ai.testError")),
+      onError: (err) => toast.error(errorMessage(err, "settings.ai.testError")),
     });
   };
 
@@ -342,7 +342,7 @@ function SecuritySection() {
       setConfirm("");
       toast.success(t("settings.security.changeSuccess"));
     } catch (err) {
-      toast.error(asIpcError(err).message || t("settings.security.changeError"));
+      toast.error(errorMessage(err, "settings.security.changeError"));
     } finally {
       setChanging(false);
     }
@@ -362,7 +362,7 @@ function SecuritySection() {
       await backupVault(path);
       toast.success(t("settings.security.backupSuccess"));
     } catch (err) {
-      toast.error(asIpcError(err).message || t("settings.security.backupError"));
+      toast.error(errorMessage(err, "settings.security.backupError"));
     } finally {
       setBacking(false);
     }
@@ -594,7 +594,7 @@ function SyncSection() {
             toast.success(t("settings.sync.exportSuccess"));
           },
           onError: (err) =>
-            toast.error(asIpcError(err).message || t("settings.sync.exportError")),
+            toast.error(errorMessage(err, "settings.sync.exportError")),
         },
       );
     } else if (mode === "import") {
@@ -606,7 +606,7 @@ function SyncSection() {
             summaryToast(summary);
           },
           onError: (err) =>
-            toast.error(asIpcError(err).message || t("settings.sync.importError")),
+            toast.error(errorMessage(err, "settings.sync.importError")),
         },
       );
     }
@@ -701,7 +701,7 @@ function TemplatesSection() {
       { reportType: selected, content: draft },
       {
         onSuccess: () => toast.success(t("settings.templates.saveSuccess")),
-        onError: (err) => toast.error(asIpcError(err).message || t("settings.templates.saveError")),
+        onError: (err) => toast.error(errorMessage(err, "settings.templates.saveError")),
       },
     );
   };
@@ -716,7 +716,7 @@ function TemplatesSection() {
     if (!selected) return;
     resetTemplate.mutate(selected, {
       onSuccess: () => toast.success(t("settings.templates.resetSuccess")),
-      onError: (err) => toast.error(asIpcError(err).message || t("settings.templates.resetError")),
+      onError: (err) => toast.error(errorMessage(err, "settings.templates.resetError")),
     });
   };
 

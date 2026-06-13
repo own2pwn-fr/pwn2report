@@ -2,6 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default report language (used when a row / payload omits `language`).
+pub fn default_language() -> String {
+    "en".to_string()
+}
+
 /// The kind of engagement the report documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +60,10 @@ pub struct Report {
     pub exec_summary: String,
     pub scope: String,
     pub methodology: String,
+    /// BCP-47-ish language code driving localized export labels + typography
+    /// (e.g. `"en"`, `"fr"`). Defaults to `"en"`. Exposed to the frontend.
+    #[serde(default = "default_language")]
+    pub language: String,
     pub created_at: String,
     pub updated_at: String,
     /// Soft-delete tombstone marker (RFC3339). `None` = live row. Omitted from
@@ -83,6 +92,9 @@ pub struct NewReport {
     #[serde(default)]
     pub client: Option<String>,
     pub report_type: ReportType,
+    /// Optional report language ("en" / "fr" / …). Defaults to "en" when absent.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 /// Partial update for `update_report`; `None` fields are left unchanged.
@@ -102,4 +114,6 @@ pub struct ReportPatch {
     pub scope: Option<String>,
     #[serde(default)]
     pub methodology: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
 }

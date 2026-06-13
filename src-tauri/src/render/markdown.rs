@@ -12,6 +12,7 @@
 use base64::Engine as _;
 
 use super::content_model::{FindingInput, ReportDocument};
+use super::labels::Labels;
 
 /// How a finding's evidence images are emitted into the Markdown.
 ///
@@ -41,18 +42,19 @@ pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String 
     // Title + metadata.
     out.push_str(&format!("# {}\n\n", doc.title));
 
+    let l = &doc.labels;
     let mut meta: Vec<String> = Vec::new();
     if !doc.client.is_empty() {
-        meta.push(format!("**Client:** {}", doc.client));
+        meta.push(format!("**{}:** {}", l.client, doc.client));
     }
     if !doc.report_type.is_empty() {
-        meta.push(format!("**Type:** {}", doc.report_type));
+        meta.push(format!("**{}:** {}", l.report_type, doc.report_type));
     }
     if !doc.status.is_empty() {
-        meta.push(format!("**Status:** {}", doc.status));
+        meta.push(format!("**{}:** {}", l.status, doc.status));
     }
     if !doc.date.is_empty() {
-        meta.push(format!("**Date:** {}", doc.date));
+        meta.push(format!("**{}:** {}", l.date, doc.date));
     }
     if !meta.is_empty() {
         out.push_str(&meta.join("  \n"));
@@ -60,39 +62,45 @@ pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String 
     }
 
     if !doc.exec_summary.is_empty() {
-        out.push_str("## Executive Summary\n\n");
+        out.push_str(&format!("## {}\n\n", l.executive_summary));
         out.push_str(&doc.exec_summary);
         out.push_str("\n\n");
     }
 
     // Severity summary table.
-    out.push_str("## Findings Overview\n\n");
-    out.push_str("| Severity | Count |\n| --- | --- |\n");
-    out.push_str(&format!("| Critical | {} |\n", doc.summary.critical));
-    out.push_str(&format!("| High | {} |\n", doc.summary.high));
-    out.push_str(&format!("| Medium | {} |\n", doc.summary.medium));
-    out.push_str(&format!("| Low | {} |\n", doc.summary.low));
-    out.push_str(&format!("| Info | {} |\n", doc.summary.info));
-    out.push_str(&format!("| **Total** | **{}** |\n\n", doc.summary.total));
+    out.push_str(&format!("## {}\n\n", l.findings_overview));
+    out.push_str(&format!(
+        "| {} | {} |\n| --- | --- |\n",
+        l.severity, l.count
+    ));
+    out.push_str(&format!("| {} | {} |\n", l.critical, doc.summary.critical));
+    out.push_str(&format!("| {} | {} |\n", l.high, doc.summary.high));
+    out.push_str(&format!("| {} | {} |\n", l.medium, doc.summary.medium));
+    out.push_str(&format!("| {} | {} |\n", l.low, doc.summary.low));
+    out.push_str(&format!("| {} | {} |\n", l.info, doc.summary.info));
+    out.push_str(&format!(
+        "| **{}** | **{}** |\n\n",
+        l.total, doc.summary.total
+    ));
 
     if !doc.scope.is_empty() {
-        out.push_str("## Scope\n\n");
+        out.push_str(&format!("## {}\n\n", l.scope));
         out.push_str(&doc.scope);
         out.push_str("\n\n");
     }
     if !doc.methodology.is_empty() {
-        out.push_str("## Methodology\n\n");
+        out.push_str(&format!("## {}\n\n", l.methodology));
         out.push_str(&doc.methodology);
         out.push_str("\n\n");
     }
 
     if !doc.findings.is_empty() {
-        out.push_str("## Detailed Findings\n\n");
+        out.push_str(&format!("## {}\n\n", l.detailed_findings));
         for (i, f) in doc.findings.iter().enumerate() {
-            push_finding(&mut out, i, f, image_mode);
+            push_finding(&mut out, i, f, l, image_mode);
         }
     } else {
-        out.push_str("_No findings recorded for this report._\n");
+        out.push_str(&format!("_{}_\n", l.no_findings));
     }
 
     out
@@ -100,7 +108,13 @@ pub fn to_markdown_with(doc: &ReportDocument, image_mode: &ImageMode) -> String 
 
 /// Append a single finding section. `idx` is the 0-based finding index (used
 /// both for the displayed number and to resolve image paths in DOCX mode).
-fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &ImageMode) {
+fn push_finding(
+    out: &mut String,
+    idx: usize,
+    f: &FindingInput,
+    l: &Labels,
+    image_mode: &ImageMode,
+) {
     out.push_str(&format!(
         "### {}. {} `{}`\n\n",
         idx + 1,
@@ -117,10 +131,10 @@ fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &Ima
         meta.push(f.cve.clone());
     }
     if !f.cvss_score.is_empty() {
-        meta.push(format!("CVSS {}", f.cvss_score));
+        meta.push(format!("{} {}", l.cvss, f.cvss_score));
     }
     if !f.confidence.is_empty() {
-        meta.push(format!("confidence: {}", f.confidence));
+        meta.push(format!("{}: {}", l.confidence.to_lowercase(), f.confidence));
     }
     if !f.kind.is_empty() {
         meta.push(f.kind.clone());
@@ -132,15 +146,15 @@ fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &Ima
         out.push_str(&format!("`{}`\n\n", f.cvss_vector));
     }
 
-    facet(out, "Summary", &f.summary);
-    facet(out, "Root cause", &f.root_cause);
-    facet(out, "Attack vector", &f.attack_vector);
-    facet(out, "Business impact", &f.business_impact);
-    facet(out, "Technical details", &f.technical_details);
+    facet(out, l.summary, &f.summary);
+    facet(out, l.root_cause, &f.root_cause);
+    facet(out, l.attack_vector, &f.attack_vector);
+    facet(out, l.business_impact, &f.business_impact);
+    facet(out, l.technical_details, &f.technical_details);
 
     // Evidence.
     if f.has_evidence {
-        out.push_str("**Evidence**\n\n");
+        out.push_str(&format!("**{}**\n\n", l.evidence));
         let loc = if !f.evidence_file.is_empty() {
             if !f.evidence_lines.is_empty() {
                 format!("{}:{}", f.evidence_file, f.evidence_lines)
@@ -158,7 +172,7 @@ fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &Ima
 
     // Proof of Concept.
     if f.has_poc {
-        out.push_str("**Proof of Concept**\n\n");
+        out.push_str(&format!("**{}**\n\n", l.proof_of_concept));
         if !f.poc_scenario.is_empty() {
             out.push_str(&f.poc_scenario);
             out.push_str("\n\n");
@@ -176,7 +190,7 @@ fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &Ima
     // `Paths` mode each image is referenced by a relative file path (pandoc's
     // `--resource-path` resolves it for DOCX embedding).
     if !f.images.is_empty() {
-        out.push_str("**Screenshots**\n\n");
+        out.push_str(&format!("**{}**\n\n", l.screenshots));
         for (j, img) in f.images.iter().enumerate() {
             let src = match image_mode {
                 ImageMode::DataUri => format!(
@@ -196,10 +210,10 @@ fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &Ima
 
     // Remediation.
     if !f.fix.is_empty() || !f.code_patch.is_empty() || !f.remediation_refs.is_empty() {
-        facet(out, "Remediation", &f.fix);
+        facet(out, l.remediation, &f.fix);
         code_block(out, &f.code_patch);
         if !f.remediation_refs.is_empty() {
-            out.push_str("**References**\n\n");
+            out.push_str(&format!("**{}**\n\n", l.references));
             for r in &f.remediation_refs {
                 out.push_str(&format!("- {r}\n"));
             }
@@ -208,7 +222,7 @@ fn push_finding(out: &mut String, idx: usize, f: &FindingInput, image_mode: &Ima
     }
 
     if !f.tags.is_empty() {
-        out.push_str(&format!("Tags: {}\n\n", f.tags.join(", ")));
+        out.push_str(&format!("{}: {}\n\n", l.tags, f.tags.join(", ")));
     }
 
     out.push_str("---\n\n");

@@ -6,6 +6,7 @@
 // like `IpcError` ({ kind, message }).
 
 import { invoke } from "@tauri-apps/api/core";
+import i18n from "@/i18n";
 import type {
   AiConfig,
   AiConfigView,
@@ -40,7 +41,50 @@ export function asIpcError(err: unknown): IpcError {
     return { kind: typeof e.kind === "string" ? e.kind : "error", message: e.message as string };
   }
   if (typeof err === "string") return { kind: "error", message: err };
-  return { kind: "error", message: "Unknown error" };
+  return { kind: "error", message: i18n.t("errors.unknown") };
+}
+
+// Backend error `kind` values that have a dedicated, translated message. Anything
+// else (including the generic "error" fallback from `asIpcError`) maps to
+// `errors.fallback`.
+const KNOWN_ERROR_KINDS = new Set([
+  "wrong_passphrase",
+  "vault_locked",
+  "not_found",
+  "db",
+  "render",
+  "pandoc",
+  "io",
+  "keychain",
+  "serialization",
+  "ai",
+  "import",
+  "sync",
+  "incompatible_vault",
+]);
+
+/**
+ * Turn a thrown IPC value into a user-facing, translated message.
+ *
+ * The backend serializes errors as `{ kind, message }` with a stable `kind` and
+ * an English `message`. We translate by `kind` (audit P1: the English `message`
+ * must not override the localized text) and append the raw technical `message`
+ * only as a parenthetical detail, so it stays available for debugging without
+ * being the primary text the user reads.
+ *
+ * Pass `fallbackKey` to override the generic fallback for sites that already had
+ * a contextual fallback string (e.g. "Could not export the report.").
+ */
+export function errorMessage(err: unknown, fallbackKey?: string): string {
+  const { kind, message } = asIpcError(err);
+  const base = KNOWN_ERROR_KINDS.has(kind)
+    ? i18n.t(`errors.${kind}`)
+    : i18n.t(fallbackKey ?? "errors.fallback");
+  // Append the raw backend message as a technical detail when it adds signal.
+  if (message && message !== base) {
+    return i18n.t("errors.withDetail", { message: base, detail: message });
+  }
+  return base;
 }
 
 // ── Vault ──────────────────────────────────────────────────────────────────

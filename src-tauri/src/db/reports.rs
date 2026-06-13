@@ -31,6 +31,7 @@ fn row_to_report(row: &Row) -> rusqlite::Result<Report> {
         exec_summary: row.get("exec_summary")?,
         scope: row.get("scope")?,
         methodology: row.get("methodology")?,
+        language: row.get("language")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         deleted_at: row.get("deleted_at")?,
@@ -129,8 +130,8 @@ pub fn insert_raw(conn: &Connection, r: &Report) -> AppResult<()> {
         r#"
         INSERT INTO reports
             (id, title, client, report_type, status, exec_summary, scope,
-             methodology, created_at, updated_at, deleted_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             methodology, language, created_at, updated_at, deleted_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
         "#,
         params![
             r.id,
@@ -141,6 +142,7 @@ pub fn insert_raw(conn: &Connection, r: &Report) -> AppResult<()> {
             r.exec_summary,
             r.scope,
             r.methodology,
+            r.language,
             r.created_at,
             r.updated_at,
             r.deleted_at,
@@ -156,8 +158,8 @@ pub fn update_raw(conn: &Connection, r: &Report) -> AppResult<()> {
         r#"
         UPDATE reports SET
             title = ?2, client = ?3, report_type = ?4, status = ?5,
-            exec_summary = ?6, scope = ?7, methodology = ?8,
-            created_at = ?9, updated_at = ?10, deleted_at = ?11
+            exec_summary = ?6, scope = ?7, methodology = ?8, language = ?9,
+            created_at = ?10, updated_at = ?11, deleted_at = ?12
         WHERE id = ?1
         "#,
         params![
@@ -169,6 +171,7 @@ pub fn update_raw(conn: &Connection, r: &Report) -> AppResult<()> {
             r.exec_summary,
             r.scope,
             r.methodology,
+            r.language,
             r.created_at,
             r.updated_at,
             r.deleted_at,
@@ -182,18 +185,22 @@ pub fn create(conn: &Connection, input: NewReport) -> AppResult<Report> {
     let id = Uuid::new_v4().to_string();
     let now = now_rfc3339();
     let client = input.client.unwrap_or_default();
+    let language = input
+        .language
+        .unwrap_or_else(crate::models::default_language);
     conn.execute(
         r#"
         INSERT INTO reports
             (id, title, client, report_type, status, exec_summary, scope,
-             methodology, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, 'draft', '', '', '', ?5, ?5)
+             methodology, language, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, 'draft', '', '', '', ?5, ?6, ?6)
         "#,
         params![
             id,
             input.title,
             client,
             report_type_str(input.report_type),
+            language,
             now
         ],
     )?;
@@ -244,6 +251,10 @@ pub fn update(conn: &Connection, id: &str, patch: ReportPatch) -> AppResult<Repo
     if let Some(methodology) = patch.methodology {
         sets.push("methodology = ?");
         vals.push(Box::new(methodology));
+    }
+    if let Some(language) = patch.language {
+        sets.push("language = ?");
+        vals.push(Box::new(language));
     }
 
     // id goes last as the final positional parameter.

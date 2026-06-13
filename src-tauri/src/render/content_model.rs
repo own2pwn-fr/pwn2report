@@ -15,6 +15,7 @@ use derive_typst_intoval::{IntoDict, IntoValue};
 use typst::foundations::{Bytes, Dict, IntoValue as _};
 
 use crate::models::{Finding, Report, ReportType, Severity};
+use crate::render::labels::Labels;
 use crate::render::markup::md_to_typst;
 
 /// One image source for a finding, as passed into [`build_document`]:
@@ -27,7 +28,14 @@ pub type ImageSource = (String, String, Vec<u8>);
 pub struct ReportDocument {
     pub title: String,
     pub client: String,
-    /// Human-readable report-type label ("Web Penetration Test", …).
+    /// BCP-47-ish language code of the report ("en", "fr", …). Drives the
+    /// localized [`labels`](Self::labels) and (in the Typst path) `text(lang:)`.
+    pub lang: String,
+    /// Localized label dictionary (section titles, severity names, facet labels,
+    /// …). Renderers/themes read these instead of hardcoding English literals.
+    pub labels: Labels,
+    /// Human-readable report-type label ("Web Penetration Test", …), already
+    /// localized via [`labels`](Self::labels).
     pub report_type: String,
     /// snake_case report-type slug ("web_pentest", …) — used by renderers to
     /// pick a per-type layout and by the Typst path to resolve the template.
@@ -138,6 +146,10 @@ pub struct FindingImage {
 pub struct TypstReportInput {
     pub title: String,
     pub client: String,
+    /// Language code (drives `#set text(lang: doc.lang)` in the themes).
+    pub lang: String,
+    /// Localized label dict the themes index (`doc.labels.executive_summary`, …).
+    pub labels: Labels,
     pub report_type: String,
     pub report_type_slug: String,
     pub status: String,
@@ -209,6 +221,8 @@ impl TypstReportInput {
         TypstReportInput {
             title: doc.title.clone(),
             client: doc.client.clone(),
+            lang: doc.lang.clone(),
+            labels: doc.labels,
             report_type: doc.report_type.clone(),
             report_type_slug: doc.report_type_slug.clone(),
             status: doc.status.clone(),
@@ -264,11 +278,13 @@ impl TypstFindingInput {
     }
 }
 
-fn report_type_label(t: ReportType) -> &'static str {
+/// The localized human-readable report-type label for the given language's
+/// [`Labels`] table.
+fn report_type_label(t: ReportType, labels: &Labels) -> &'static str {
     match t {
-        ReportType::WebPentest => "Web Penetration Test",
-        ReportType::CodeAudit => "Code Audit",
-        ReportType::RedTeam => "Red Team Engagement",
+        ReportType::WebPentest => labels.report_type_web_pentest,
+        ReportType::CodeAudit => labels.report_type_code_audit,
+        ReportType::RedTeam => labels.report_type_red_team,
     }
 }
 
@@ -371,10 +387,14 @@ pub fn build_document(
         .unwrap_or(&report.updated_at)
         .to_string();
 
+    let labels = Labels::for_lang(&report.language);
+
     ReportDocument {
         title: report.title.clone(),
         client: report.client.clone(),
-        report_type: report_type_label(report.report_type).to_string(),
+        lang: report.language.clone(),
+        labels,
+        report_type: report_type_label(report.report_type, &labels).to_string(),
         report_type_slug: report.report_type.slug().to_string(),
         status: report.status.clone(),
         date,

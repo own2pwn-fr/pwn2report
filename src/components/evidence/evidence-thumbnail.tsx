@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, ImageOff, PenLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 import { objectUrlFromBytes } from "@/lib/image";
 import {
   useEvidenceBytes,
@@ -54,7 +54,7 @@ export function EvidenceThumbnail({
     if (next === image.caption) return;
     updateCaption.mutate(
       { id: image.id, caption: next },
-      { onError: (err) => toast.error(asIpcError(err).message || t("evidence.captionError")) },
+      { onError: (err) => toast.error(errorMessage(err, "evidence.captionError")) },
     );
   };
 

@@ -18,6 +18,8 @@
 #import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
 
 #let doc = inputs
+// Localized label dict injected by the Rust render IR (doc.labels.*).
+#let l = doc.labels
 
 // ---------------------------------------------------------------------------
 // Page + text defaults
@@ -28,7 +30,8 @@
   header: make-header(doc),
   footer: make-footer(),
 )
-#set text(font: "Inter", size: 10.5pt, lang: "en")
+// Typography/hyphenation follows the report language.
+#set text(font: "Inter", size: 10.5pt, lang: doc.lang)
 #set par(justify: true, leading: 0.62em)
 #show heading: set text(fill: accent)
 #set heading(numbering: none)
@@ -44,7 +47,7 @@
 // Executive summary (the engagement narrative overview)
 // ---------------------------------------------------------------------------
 #if doc.exec_summary != "" {
-  heading(level: 1, "Engagement Summary")
+  heading(level: 1, l.engagement_summary)
   block(prose(doc.exec_summary))
   v(0.5em)
 }
@@ -52,19 +55,19 @@
 // ---------------------------------------------------------------------------
 // Severity summary table
 // ---------------------------------------------------------------------------
-#heading(level: 1, "Impact Overview")
-#severity-summary-table(doc.summary)
+#heading(level: 1, l.impact_overview)
+#severity-summary-table(doc.summary, l)
 #v(0.5em)
 
 // ---------------------------------------------------------------------------
 // Scope (rules of engagement) & methodology (attack approach)
 // ---------------------------------------------------------------------------
 #if doc.scope != "" {
-  heading(level: 1, "Rules of Engagement")
+  heading(level: 1, l.rules_of_engagement)
   block(prose(doc.scope))
 }
 #if doc.methodology != "" {
-  heading(level: 1, "Approach")
+  heading(level: 1, l.approach)
   block(prose(doc.methodology))
 }
 
@@ -73,41 +76,41 @@
 // ---------------------------------------------------------------------------
 #if doc.findings.len() > 0 {
   pagebreak()
-  heading(level: 1, "Attack Narratives")
+  heading(level: 1, l.attack_narratives)
 
   for (i, f) in doc.findings.enumerate() {
     finding-heading(i + 1, f)
-    finding-meta(f)
+    finding-meta(f, l)
 
     // Lead with the scenario — the story of the attack.
     if f.has_poc and f.poc_scenario != "" {
-      facet("Scenario", f.poc_scenario)
+      facet(l.scenario, f.poc_scenario)
     } else if f.summary != "" {
-      facet("Scenario", f.summary)
+      facet(l.scenario, f.summary)
     }
 
     // Numbered exploitation walk-through.
     if f.has_poc and f.poc_steps.len() > 0 {
-      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Exploitation steps"))
+      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, l.exploitation_steps))
       block(spacing: 6pt, enum(..f.poc_steps))
     }
 
     // Payload used in the exploitation.
     if f.has_poc and f.poc_payload != "" {
-      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Payload"))
+      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, l.payload))
       code-block(f.poc_payload)
     }
 
     // Supporting context — attack vector and business impact tell the "so what".
-    facet("Attack vector", f.attack_vector)
-    facet("Business impact", f.business_impact)
-    facet("Technical details", f.technical_details)
-    facet("Root cause", f.root_cause)
+    facet(l.attack_vector, f.attack_vector)
+    facet(l.business_impact, f.business_impact)
+    facet(l.technical_details, f.technical_details)
+    facet(l.root_cause, f.root_cause)
 
     // Evidence captured during the operation.
     if f.has_evidence {
       let loc = evidence-loc(f)
-      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Evidence"))
+      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, l.evidence))
       if loc != "" {
         block(spacing: 4pt, text(size: 8.5pt, fill: luma(120), font: "JetBrains Mono", loc))
       }
@@ -115,13 +118,13 @@
     }
 
     // Evidence images (screenshots captured during the operation).
-    finding-images(f)
+    finding-images(f, l.screenshots)
 
     // Remediation / hardening recommendations.
     if f.fix != "" or f.code_patch != "" or f.remediation_refs.len() > 0 {
-      facet("Recommendation", f.fix)
+      facet(l.recommendation, f.fix)
       code-block(f.code_patch)
-      references-block(f.remediation_refs)
+      references-block(f.remediation_refs, l.references)
     }
 
     // Tags.
@@ -133,5 +136,5 @@
   }
 } else {
   v(1em)
-  text(fill: luma(130), style: "italic", "No findings recorded for this report.")
+  text(fill: luma(130), style: "italic", l.no_findings)
 }

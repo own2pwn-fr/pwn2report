@@ -29,7 +29,7 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Current schema version. Bump when adding a migration step (see module docs).
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// A single idempotent migration step.
 type MigrationStep = fn(&Connection) -> AppResult<()>;
@@ -41,6 +41,7 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
     (2, migrate_v2),
     (3, migrate_v3),
     (4, migrate_v4),
+    (5, migrate_v5),
 ];
 
 /// Apply any pending migrations and stamp the schema version.
@@ -49,8 +50,8 @@ const MIGRATIONS: &[(i64, MigrationStep)] = &[
 /// a no-op. Otherwise every step with `version > current` runs in order inside a
 /// single transaction, then `user_version` + the `meta` mirror are bumped.
 ///
-/// Fresh installs (user_version 0) run the whole v1..=v4 ladder; existing v1/v2/
-/// v3 vaults run only the steps they are missing.
+/// Fresh installs (user_version 0) run the whole v1..=v5 ladder; existing v1..v4
+/// vaults run only the steps they are missing.
 pub fn init(conn: &Connection) -> AppResult<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
@@ -218,6 +219,17 @@ fn migrate_v4(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// v5: per-report export language. Adds a non-null `language` column to
+/// `reports` defaulting to `'en'` so existing rows keep rendering in English.
+/// Drives the localized export labels + Typst typography. `ADD COLUMN` is
+/// guarded by [`column_exists`] for idempotency.
+fn migrate_v5(conn: &Connection) -> AppResult<()> {
+    if !column_exists(conn, "reports", "language")? {
+        conn.execute_batch("ALTER TABLE reports ADD COLUMN language TEXT NOT NULL DEFAULT 'en';")?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +294,32 @@ mod tests {
             })
             .unwrap();
         assert!(deleted.is_none());
+        // v5 also added `language`, defaulting the pre-existing row to 'en'.
+        let lang: String = conn
+            .query_row("SELECT language FROM reports WHERE id = 'r1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(lang, "en");
+    }
+
+    /// A fresh DB has the v5 `language` column on `reports` defaulting to 'en'.
+    #[test]
+    fn fresh_db_has_language_column_defaulting_to_en() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        assert!(column_exists(&conn, "reports", "language").unwrap());
+        conn.execute(
+            "INSERT INTO reports (id, title, report_type, created_at, updated_at) \
+             VALUES ('r2', 't', 'web_pentest', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let lang: String = conn
+            .query_row("SELECT language FROM reports WHERE id = 'r2'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(lang, "en");
     }
 }

@@ -1,21 +1,23 @@
+import i18n from "@/i18n";
 import type { Confidence, ReportType, Severity, TriageStatus } from "./types";
 
-/** Format an ISO timestamp as a short, locale-aware date. */
+/** Format an ISO timestamp as a short date, following the active app language. */
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(i18n.language, {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
 }
 
-/** Format an ISO timestamp with time, for "last updated" tooltips. */
+/** Format an ISO timestamp with time (for "last updated" tooltips), following
+ * the active app language. */
 export function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(i18n.language, {
     year: "numeric",
     month: "short",
     day: "numeric",

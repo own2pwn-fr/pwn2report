@@ -19,6 +19,8 @@
 #import "lib/common.typ": severity-color, severity-label, severity-badge, tag-pill, facet, prose, code-block, accent, make-header, make-footer, title-page, severity-summary-table, finding-heading, finding-meta, evidence-loc, references-block, finding-separator, finding-images
 
 #let doc = inputs
+// Localized label dict injected by the Rust render IR (doc.labels.*).
+#let l = doc.labels
 
 // ---------------------------------------------------------------------------
 // Page + text defaults
@@ -29,7 +31,8 @@
   header: make-header(doc),
   footer: make-footer(),
 )
-#set text(font: "Inter", size: 10.5pt, lang: "en")
+// Typography/hyphenation follows the report language.
+#set text(font: "Inter", size: 10.5pt, lang: doc.lang)
 #set par(justify: true, leading: 0.62em)
 #show heading: set text(fill: accent)
 #set heading(numbering: none)
@@ -60,7 +63,7 @@
 // Executive summary
 // ---------------------------------------------------------------------------
 #if doc.exec_summary != "" {
-  heading(level: 1, "Executive Summary")
+  heading(level: 1, l.executive_summary)
   block(prose(doc.exec_summary))
   v(0.5em)
 }
@@ -68,19 +71,19 @@
 // ---------------------------------------------------------------------------
 // Severity summary table
 // ---------------------------------------------------------------------------
-#heading(level: 1, "Findings Overview")
-#severity-summary-table(doc.summary)
+#heading(level: 1, l.findings_overview)
+#severity-summary-table(doc.summary, l)
 #v(0.5em)
 
 // ---------------------------------------------------------------------------
 // Scope & methodology
 // ---------------------------------------------------------------------------
 #if doc.scope != "" {
-  heading(level: 1, "Scope")
+  heading(level: 1, l.scope)
   block(prose(doc.scope))
 }
 #if doc.methodology != "" {
-  heading(level: 1, "Methodology")
+  heading(level: 1, l.methodology)
   block(prose(doc.methodology))
 }
 
@@ -89,7 +92,7 @@
 // ---------------------------------------------------------------------------
 #if doc.findings.len() > 0 {
   pagebreak()
-  heading(level: 1, "Detailed Findings")
+  heading(level: 1, l.detailed_findings)
 
   for (i, f) in doc.findings.enumerate() {
     finding-heading(i + 1, f)
@@ -99,26 +102,26 @@
 
     // CWE called out explicitly (in addition to the meta line).
     if f.cwe != "" {
-      block(spacing: 6pt, text(size: 9pt, weight: "semibold", fill: accent, "Weakness: " + f.cwe))
+      block(spacing: 6pt, text(size: 9pt, weight: "semibold", fill: accent, l.weakness + ": " + f.cwe))
     }
-    finding-meta(f)
+    finding-meta(f, l)
 
     // The vulnerable code snippet, prominent.
     if f.evidence_snippet != "" {
-      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Vulnerable code"))
+      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, l.vulnerable_code))
       code-block(f.evidence_snippet)
     }
 
     // Description facets — technical first for an audit audience.
-    facet("Summary", f.summary)
-    facet("Root cause", f.root_cause)
-    facet("Technical details", f.technical_details)
-    facet("Attack vector", f.attack_vector)
-    facet("Business impact", f.business_impact)
+    facet(l.summary, f.summary)
+    facet(l.root_cause, f.root_cause)
+    facet(l.technical_details, f.technical_details)
+    facet(l.attack_vector, f.attack_vector)
+    facet(l.business_impact, f.business_impact)
 
     // Proof of Concept (optional, secondary in an audit).
     if f.has_poc {
-      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Proof of Concept"))
+      block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, l.proof_of_concept))
       if f.poc_scenario != "" { block(spacing: 6pt, prose(f.poc_scenario)) }
       if f.poc_steps.len() > 0 {
         block(spacing: 6pt, enum(..f.poc_steps))
@@ -127,16 +130,16 @@
     }
 
     // Evidence images (screenshots / diagrams).
-    finding-images(f)
+    finding-images(f, l.screenshots)
 
     // Remediation — the fix description plus the suggested code patch.
     if f.fix != "" or f.code_patch != "" or f.remediation_refs.len() > 0 {
-      facet("Remediation", f.fix)
+      facet(l.remediation, f.fix)
       if f.code_patch != "" {
-        block(spacing: 6pt, text(size: 9pt, weight: "semibold", fill: accent, "Suggested patch"))
+        block(spacing: 6pt, text(size: 9pt, weight: "semibold", fill: accent, l.suggested_patch))
         code-block(f.code_patch)
       }
-      references-block(f.remediation_refs)
+      references-block(f.remediation_refs, l.references)
     }
 
     // Tags.
@@ -148,5 +151,5 @@
   }
 } else {
   v(1em)
-  text(fill: luma(130), style: "italic", "No findings recorded for this report.")
+  text(fill: luma(130), style: "italic", l.no_findings)
 }

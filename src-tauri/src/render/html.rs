@@ -9,6 +9,7 @@
 use base64::Engine as _;
 
 use super::content_model::{FindingInput, ReportDocument};
+use super::labels::Labels;
 
 /// Escape the five significant HTML characters in user content.
 fn esc(s: &str) -> String {
@@ -116,8 +117,13 @@ figure.evidence-img figcaption {
 
 /// Render the full report to a self-contained HTML document string.
 pub fn to_html(doc: &ReportDocument) -> String {
+    let l = &doc.labels;
+    let lang = if doc.lang.is_empty() { "en" } else { &doc.lang };
     let mut out = String::new();
-    out.push_str("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n");
+    out.push_str(&format!(
+        "<!DOCTYPE html>\n<html lang=\"{}\">\n<head>\n",
+        esc(lang)
+    ));
     out.push_str("<meta charset=\"utf-8\">\n");
     out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
     out.push_str(&format!("<title>{}</title>\n", esc(&doc.title)));
@@ -130,16 +136,32 @@ pub fn to_html(doc: &ReportDocument) -> String {
     // Metadata.
     let mut meta: Vec<String> = Vec::new();
     if !doc.client.is_empty() {
-        meta.push(format!("<strong>Client:</strong> {}", esc(&doc.client)));
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.client),
+            esc(&doc.client)
+        ));
     }
     if !doc.report_type.is_empty() {
-        meta.push(format!("<strong>Type:</strong> {}", esc(&doc.report_type)));
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.report_type),
+            esc(&doc.report_type)
+        ));
     }
     if !doc.status.is_empty() {
-        meta.push(format!("<strong>Status:</strong> {}", esc(&doc.status)));
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.status),
+            esc(&doc.status)
+        ));
     }
     if !doc.date.is_empty() {
-        meta.push(format!("<strong>Date:</strong> {}", esc(&doc.date)));
+        meta.push(format!(
+            "<strong>{}:</strong> {}",
+            esc(l.date),
+            esc(&doc.date)
+        ));
     }
     if !meta.is_empty() {
         out.push_str(&format!(
@@ -149,19 +171,23 @@ pub fn to_html(doc: &ReportDocument) -> String {
     }
 
     if !doc.exec_summary.is_empty() {
-        out.push_str("<h2>Executive Summary</h2>\n");
+        out.push_str(&format!("<h2>{}</h2>\n", esc(l.executive_summary)));
         para(&mut out, &doc.exec_summary);
     }
 
     // Severity summary table.
-    out.push_str("<h2>Findings Overview</h2>\n<table>\n");
-    out.push_str("<tr><th>Severity</th><th>Count</th></tr>\n");
+    out.push_str(&format!("<h2>{}</h2>\n<table>\n", esc(l.findings_overview)));
+    out.push_str(&format!(
+        "<tr><th>{}</th><th>{}</th></tr>\n",
+        esc(l.severity),
+        esc(l.count)
+    ));
     for (sev, label, n) in [
-        ("critical", "Critical", doc.summary.critical),
-        ("high", "High", doc.summary.high),
-        ("medium", "Medium", doc.summary.medium),
-        ("low", "Low", doc.summary.low),
-        ("info", "Info", doc.summary.info),
+        ("critical", l.critical, doc.summary.critical),
+        ("high", l.high, doc.summary.high),
+        ("medium", l.medium, doc.summary.medium),
+        ("low", l.low, doc.summary.low),
+        ("info", l.info, doc.summary.info),
     ] {
         out.push_str(&format!(
             "<tr><td>{}</td><td>{}</td></tr>\n",
@@ -170,26 +196,27 @@ pub fn to_html(doc: &ReportDocument) -> String {
         ));
     }
     out.push_str(&format!(
-        "<tr class=\"total\"><td>Total</td><td>{}</td></tr>\n</table>\n",
+        "<tr class=\"total\"><td>{}</td><td>{}</td></tr>\n</table>\n",
+        esc(l.total),
         doc.summary.total
     ));
 
     if !doc.scope.is_empty() {
-        out.push_str("<h2>Scope</h2>\n");
+        out.push_str(&format!("<h2>{}</h2>\n", esc(l.scope)));
         para(&mut out, &doc.scope);
     }
     if !doc.methodology.is_empty() {
-        out.push_str("<h2>Methodology</h2>\n");
+        out.push_str(&format!("<h2>{}</h2>\n", esc(l.methodology)));
         para(&mut out, &doc.methodology);
     }
 
     if !doc.findings.is_empty() {
-        out.push_str("<h2>Detailed Findings</h2>\n");
+        out.push_str(&format!("<h2>{}</h2>\n", esc(l.detailed_findings)));
         for (i, f) in doc.findings.iter().enumerate() {
-            push_finding(&mut out, i + 1, f);
+            push_finding(&mut out, i + 1, f, l);
         }
     } else {
-        out.push_str("<p class=\"empty\">No findings recorded for this report.</p>\n");
+        out.push_str(&format!("<p class=\"empty\">{}</p>\n", esc(l.no_findings)));
     }
 
     out.push_str("</div>\n</body>\n</html>\n");
@@ -205,7 +232,7 @@ fn chip(sev: &str, label: &str) -> String {
     )
 }
 
-fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
+fn push_finding(out: &mut String, n: usize, f: &FindingInput, l: &Labels) {
     out.push_str("<div class=\"finding\">\n");
     out.push_str(&format!(
         "<h3>{}. {} {}</h3>\n",
@@ -223,10 +250,14 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
         meta.push(esc(&f.cve));
     }
     if !f.cvss_score.is_empty() {
-        meta.push(format!("CVSS {}", esc(&f.cvss_score)));
+        meta.push(format!("{} {}", esc(l.cvss), esc(&f.cvss_score)));
     }
     if !f.confidence.is_empty() {
-        meta.push(format!("confidence: {}", esc(&f.confidence)));
+        meta.push(format!(
+            "{}: {}",
+            esc(&l.confidence.to_lowercase()),
+            esc(&f.confidence)
+        ));
     }
     if !f.kind.is_empty() {
         meta.push(esc(&f.kind));
@@ -244,15 +275,18 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
         ));
     }
 
-    facet(out, "Summary", &f.summary);
-    facet(out, "Root cause", &f.root_cause);
-    facet(out, "Attack vector", &f.attack_vector);
-    facet(out, "Business impact", &f.business_impact);
-    facet(out, "Technical details", &f.technical_details);
+    facet(out, l.summary, &f.summary);
+    facet(out, l.root_cause, &f.root_cause);
+    facet(out, l.attack_vector, &f.attack_vector);
+    facet(out, l.business_impact, &f.business_impact);
+    facet(out, l.technical_details, &f.technical_details);
 
     // Evidence.
     if f.has_evidence {
-        out.push_str("<div class=\"facet-label\">Evidence</div>\n");
+        out.push_str(&format!(
+            "<div class=\"facet-label\">{}</div>\n",
+            esc(l.evidence)
+        ));
         let loc = if !f.evidence_file.is_empty() {
             if !f.evidence_lines.is_empty() {
                 format!("{}:{}", f.evidence_file, f.evidence_lines)
@@ -273,7 +307,10 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
 
     // Proof of Concept.
     if f.has_poc {
-        out.push_str("<div class=\"facet-label\">Proof of Concept</div>\n");
+        out.push_str(&format!(
+            "<div class=\"facet-label\">{}</div>\n",
+            esc(l.proof_of_concept)
+        ));
         if !f.poc_scenario.is_empty() {
             para(out, &f.poc_scenario);
         }
@@ -289,7 +326,10 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
 
     // Evidence images (inlined as base64 data-URIs so the doc is self-contained).
     if !f.images.is_empty() {
-        out.push_str("<div class=\"facet-label\">Screenshots</div>\n");
+        out.push_str(&format!(
+            "<div class=\"facet-label\">{}</div>\n",
+            esc(l.screenshots)
+        ));
         for img in &f.images {
             let b64 = base64::engine::general_purpose::STANDARD.encode(img.data.as_slice());
             out.push_str("<figure class=\"evidence-img\">\n");
@@ -309,12 +349,18 @@ fn push_finding(out: &mut String, n: usize, f: &FindingInput) {
     // Remediation.
     if !f.fix.is_empty() || !f.code_patch.is_empty() || !f.remediation_refs.is_empty() {
         if !f.fix.is_empty() {
-            out.push_str("<div class=\"facet-label\">Remediation</div>\n");
+            out.push_str(&format!(
+                "<div class=\"facet-label\">{}</div>\n",
+                esc(l.remediation)
+            ));
             para(out, &f.fix);
         }
         code_block(out, &f.code_patch);
         if !f.remediation_refs.is_empty() {
-            out.push_str("<div class=\"facet-label\">References</div>\n<ul>\n");
+            out.push_str(&format!(
+                "<div class=\"facet-label\">{}</div>\n<ul>\n",
+                esc(l.references)
+            ));
             for r in &f.remediation_refs {
                 out.push_str(&format!("<li><a href=\"{0}\">{0}</a></li>\n", esc(r)));
             }

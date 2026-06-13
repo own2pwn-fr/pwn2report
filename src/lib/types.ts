@@ -66,6 +66,9 @@ export interface Report {
   exec_summary: string;
   scope: string;
   methodology: string;
+  /** Delivery language of the *exported* report (section titles etc.), independent
+   * of the app UI language. Backend default is "en". */
+  language: string;
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +93,8 @@ export interface NewReport {
   title: string;
   client: string;
   report_type: ReportType;
+  /** Optional delivery language for the exported report; backend defaults to "en". */
+  language?: string;
 }
 
 export interface NewFinding {
@@ -122,7 +127,14 @@ export interface TemplateInfo {
 export type ReportPatch = Partial<
   Pick<
     Report,
-    "title" | "client" | "report_type" | "status" | "exec_summary" | "scope" | "methodology"
+    | "title"
+    | "client"
+    | "report_type"
+    | "status"
+    | "exec_summary"
+    | "scope"
+    | "methodology"
+    | "language"
   >
 >;
 

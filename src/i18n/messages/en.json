@@ -3,6 +3,27 @@
     "name": "pwn2report",
     "tagline": "Write pentest reports, offline and encrypted."
   },
+  "errors": {
+    "fallback": "Something went wrong.",
+    "unknown": "Unknown error",
+    "withDetail": "{{message}} ({{detail}})",
+    "wrong_passphrase": "Wrong passphrase.",
+    "vault_locked": "The vault is locked. Unlock it and try again.",
+    "not_found": "The requested item could not be found.",
+    "db": "A database error occurred.",
+    "render": "Could not render the report.",
+    "pandoc": "Document conversion failed. Make sure Pandoc is installed.",
+    "io": "A file system error occurred.",
+    "keychain": "The system keychain could not be accessed.",
+    "serialization": "Could not read or write the data format.",
+    "ai": "The AI request failed.",
+    "import": "Could not import the data.",
+    "sync": "The sync operation failed.",
+    "incompatible_vault": "This vault or bundle is from an incompatible version."
+  },
+  "image": {
+    "canvasExportFailed": "Image export failed."
+  },
   "common": {
     "cancel": "Cancel",
     "create": "Create",
@@ -30,7 +51,7 @@
     "label": "Language",
     "toggle": "Change language",
     "en": "English",
-    "fr": "French"
+    "fr": "Français"
   },
   "vault": {
     "title": "Vault",
@@ -105,7 +126,11 @@
     "exportError": "Could not export the report.",
     "exportCancelled": "Export cancelled.",
     "notFound": "Report not found.",
-    "details": "Report details"
+    "details": "Report details",
+    "language": {
+      "label": "Report language",
+      "hint": "Language of the exported report (section titles etc.). Independent of the app interface language."
+    }
   },
   "findings": {
     "title": "Findings",
@@ -216,6 +241,7 @@
     "empty": "No images yet. Add a screenshot to illustrate this finding.",
     "add": "Add image",
     "adding": "Adding…",
+    "filterImages": "Images",
     "addError": "Could not add the image.",
     "loadError": "Could not load the image.",
     "loading": "Loading…",
@@ -318,6 +344,46 @@
       "MEDIUM": "Medium",
       "LOW": "Low",
       "NONE": "None"
+    },
+    "metrics": {
+      "AV": "Attack Vector",
+      "AC": "Attack Complexity",
+      "AT": "Attack Requirements",
+      "PR": "Privileges Required",
+      "UI": "User Interaction",
+      "S": "Scope",
+      "C": "Confidentiality",
+      "I": "Integrity",
+      "A": "Availability",
+      "VC": "Confidentiality (VC)",
+      "VI": "Integrity (VI)",
+      "VA": "Availability (VA)",
+      "SC": "Subsequent Confidentiality (SC)",
+      "SI": "Subsequent Integrity (SI)",
+      "SA": "Subsequent Availability (SA)",
+      "values": {
+        "network": "Network",
+        "adjacent": "Adjacent",
+        "local": "Local",
+        "physical": "Physical",
+        "low": "Low",
+        "high": "High",
+        "none": "None",
+        "required": "Required",
+        "unchanged": "Unchanged",
+        "changed": "Changed",
+        "present": "Present",
+        "passive": "Passive",
+        "active": "Active"
+      }
+    }
+  },
+  "export": {
+    "filter": {
+      "pdf": "PDF",
+      "docx": "Word document",
+      "markdown": "Markdown",
+      "html": "HTML"
     }
   },
   "settings": {

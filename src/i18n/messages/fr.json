@@ -3,6 +3,27 @@
     "name": "pwn2report",
     "tagline": "Rédigez vos rapports de pentest, hors ligne et chiffrés."
   },
+  "errors": {
+    "fallback": "Une erreur est survenue.",
+    "unknown": "Erreur inconnue",
+    "withDetail": "{{message}} ({{detail}})",
+    "wrong_passphrase": "Phrase secrète incorrecte.",
+    "vault_locked": "Le coffre-fort est verrouillé. Déverrouillez-le et réessayez.",
+    "not_found": "L'élément demandé est introuvable.",
+    "db": "Une erreur de base de données est survenue.",
+    "render": "Impossible de générer le rapport.",
+    "pandoc": "La conversion du document a échoué. Vérifiez que Pandoc est installé.",
+    "io": "Une erreur de système de fichiers est survenue.",
+    "keychain": "Impossible d'accéder au trousseau du système.",
+    "serialization": "Impossible de lire ou d'écrire le format de données.",
+    "ai": "La requête à l'IA a échoué.",
+    "import": "Impossible d'importer les données.",
+    "sync": "L'opération de synchronisation a échoué.",
+    "incompatible_vault": "Ce coffre-fort ou ce paquet provient d'une version incompatible."
+  },
+  "image": {
+    "canvasExportFailed": "L'export de l'image a échoué."
+  },
   "common": {
     "cancel": "Annuler",
     "create": "Créer",
@@ -29,7 +50,7 @@
   "language": {
     "label": "Langue",
     "toggle": "Changer de langue",
-    "en": "Anglais",
+    "en": "English",
     "fr": "Français"
   },
   "vault": {
@@ -105,7 +126,11 @@
     "exportError": "Impossible d'exporter le rapport.",
     "exportCancelled": "Export annulé.",
     "notFound": "Rapport introuvable.",
-    "details": "Détails du rapport"
+    "details": "Détails du rapport",
+    "language": {
+      "label": "Langue du rapport",
+      "hint": "Langue du rapport exporté (titres de sections, etc.). Indépendante de la langue de l'interface."
+    }
   },
   "findings": {
     "title": "Vulnérabilités",
@@ -216,6 +241,7 @@
     "empty": "Aucune image pour l'instant. Ajoutez une capture d'écran pour illustrer cette vulnérabilité.",
     "add": "Ajouter une image",
     "adding": "Ajout en cours…",
+    "filterImages": "Images",
     "addError": "Impossible d'ajouter l'image.",
     "loadError": "Impossible de charger l'image.",
     "loading": "Chargement…",
@@ -318,6 +344,46 @@
       "MEDIUM": "Moyenne",
       "LOW": "Faible",
       "NONE": "Aucune"
+    },
+    "metrics": {
+      "AV": "Vecteur d'attaque",
+      "AC": "Complexité d'attaque",
+      "AT": "Conditions d'attaque",
+      "PR": "Privilèges requis",
+      "UI": "Interaction utilisateur",
+      "S": "Périmètre",
+      "C": "Confidentialité",
+      "I": "Intégrité",
+      "A": "Disponibilité",
+      "VC": "Confidentialité (VC)",
+      "VI": "Intégrité (VI)",
+      "VA": "Disponibilité (VA)",
+      "SC": "Confidentialité subséquente (SC)",
+      "SI": "Intégrité subséquente (SI)",
+      "SA": "Disponibilité subséquente (SA)",
+      "values": {
+        "network": "Réseau",
+        "adjacent": "Adjacent",
+        "local": "Local",
+        "physical": "Physique",
+        "low": "Faible",
+        "high": "Élevée",
+        "none": "Aucune",
+        "required": "Requise",
+        "unchanged": "Inchangé",
+        "changed": "Modifié",
+        "present": "Présentes",
+        "passive": "Passive",
+        "active": "Active"
+      }
+    }
+  },
+  "export": {
+    "filter": {
+      "pdf": "PDF",
+      "docx": "Document Word",
+      "markdown": "Markdown",
+      "html": "HTML"
     }
   },
   "settings": {
@@ -392,9 +458,9 @@
       "importing": "Importation…",
       "importError": "Impossible d'importer le paquet de synchronisation.",
       "importSuccess": "Importé : {{reports}} ; {{findings}} ; {{kb}} ; {{images}}.",
-      "summaryReports": "{{added}} nouveaux, {{updated}} mis à jour rapports",
-      "summaryFindings": "{{added}} nouvelles, {{updated}} mises à jour vulnérabilités",
-      "summaryKb": "{{added}} nouvelles, {{updated}} mises à jour entrées de base de connaissances",
+      "summaryReports": "{{added}} rapports ajoutés, {{updated}} mis à jour",
+      "summaryFindings": "{{added}} vulnérabilités ajoutées, {{updated}} mises à jour",
+      "summaryKb": "{{added}} entrées de base de connaissances ajoutées, {{updated}} mises à jour",
       "summaryImages": "{{count}} images",
       "passphraseTitle": "Phrase secrète du paquet",
       "passphraseExportDescription": "Choisissez une phrase secrète pour chiffrer le paquet. Elle vous sera nécessaire pour l'importer sur un autre appareil.",

@@ -27,43 +27,54 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
+import { ReportLanguageSelect } from "@/components/report-language-select";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
+import { SUPPORTED_LANGUAGES } from "@/i18n";
 import { useCreateReport, useDeleteReport, useReports } from "@/lib/queries/use-reports";
 import { useLockVault } from "@/lib/queries/use-vault";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 import { formatDate } from "@/lib/format";
 import type { ReportSummary, ReportType } from "@/lib/types";
 
 const REPORT_TYPES: ReportType[] = ["web_pentest", "code_audit", "red_team"];
 
+/** Resolve the active UI language down to a supported short code (default "en"). */
+function uiLanguage(raw: string): string {
+  const short = raw.split("-")[0];
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(short) ? short : "en";
+}
+
 function NewReportDialog({ onCreated }: { onCreated: (id: string) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [client, setClient] = useState("");
   const [type, setType] = useState<ReportType>("web_pentest");
+  // Default the report's delivery language to the current UI language.
+  const [language, setLanguage] = useState<string>(() => uiLanguage(i18n.language));
   const createReport = useCreateReport();
 
   const reset = () => {
     setTitle("");
     setClient("");
     setType("web_pentest");
+    setLanguage(uiLanguage(i18n.language));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !client.trim()) return;
     createReport.mutate(
-      { title: title.trim(), client: client.trim(), report_type: type },
+      { title: title.trim(), client: client.trim(), report_type: type, language },
       {
         onSuccess: (report) => {
           setOpen(false);
           reset();
           onCreated(report.id);
         },
-        onError: (err) => toast.error(asIpcError(err).message || t("reports.createError")),
+        onError: (err) => toast.error(errorMessage(err, "reports.createError")),
       },
     );
   };
@@ -123,6 +134,7 @@ function NewReportDialog({ onCreated }: { onCreated: (id: string) => void }) {
               </SelectContent>
             </Select>
           </div>
+          <ReportLanguageSelect value={language} onChange={setLanguage} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               {t("common.cancel")}
@@ -166,7 +178,7 @@ export function ReportsList() {
       undoLabel: t("common.undo"),
       perform: () =>
         deleteReport.mutate(report.id, {
-          onError: (err) => toast.error(asIpcError(err).message),
+          onError: (err) => toast.error(errorMessage(err)),
         }),
     });
   };

@@ -17,6 +17,7 @@ pub fn sample_report() -> Report {
         exec_summary: "An overview of the assessment.".into(),
         scope: "https://app.example.com".into(),
         methodology: "OWASP WSTG.".into(),
+        language: "en".into(),
         created_at: "2026-06-12T00:00:00Z".into(),
         updated_at: "2026-06-12T12:00:00Z".into(),
         deleted_at: None,

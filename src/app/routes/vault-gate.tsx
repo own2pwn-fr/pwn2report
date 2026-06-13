@@ -15,7 +15,7 @@ import {
   useUnlockWithKeychain,
   useVaultStatus,
 } from "@/lib/queries/use-vault";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 
 export function VaultGate() {
   const { t } = useTranslation();
@@ -49,7 +49,7 @@ export function VaultGate() {
       createVault.mutate(
         { passphrase, remember },
         {
-          onError: (err) => setError(asIpcError(err).message),
+          onError: (err) => setError(errorMessage(err)),
         },
       );
     } else {
@@ -69,7 +69,7 @@ export function VaultGate() {
         if (!ok) setError(t("vault.keychainFailed"));
       },
       onError: (err) => {
-        toast.error(asIpcError(err).message);
+        toast.error(errorMessage(err));
         setError(t("vault.keychainFailed"));
       },
     });

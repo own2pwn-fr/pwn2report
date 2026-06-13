@@ -144,6 +144,7 @@ mod tests {
             exec_summary: "summary".into(),
             scope: "scope".into(),
             methodology: "method".into(),
+            language: "en".into(),
             created_at: "2026-06-12T10:00:00+00:00".into(),
             updated_at: "2026-06-12T11:00:00+00:00".into(),
             deleted_at: None,

@@ -121,8 +121,9 @@
   })
 })
 
-// The per-severity summary table (counts + total).
-#let severity-summary-table(summary) = {
+// The per-severity summary table (counts + total). `labels` is the injected
+// localized label dict (`doc.labels`); the total row uses `labels.total`.
+#let severity-summary-table(summary, labels) = {
   let count-cell(sev, n) = (
     severity-badge(sev),
     align(center, text(weight: "bold", str(n))),
@@ -137,7 +138,7 @@
     ..count-cell("medium", summary.medium),
     ..count-cell("low", summary.low),
     ..count-cell("info", summary.info),
-    table.cell(fill: luma(245), text(weight: "bold", "TOTAL")),
+    table.cell(fill: luma(245), text(weight: "bold", upper(labels.total))),
     align(center, text(weight: "bold", str(summary.total))),
   )
 }
@@ -154,12 +155,13 @@
 })
 
 // A finding's meta line (CWE / CVE / CVSS / confidence / kind) + CVSS vector.
-#let finding-meta(f) = {
+// `labels` is the injected localized label dict (`doc.labels`).
+#let finding-meta(f, labels) = {
   let meta = ()
   if f.cwe != "" { meta.push(f.cwe) }
   if f.cve != "" { meta.push(f.cve) }
-  if f.cvss_score != "" { meta.push("CVSS " + f.cvss_score) }
-  if f.confidence != "" { meta.push("confidence: " + f.confidence) }
+  if f.cvss_score != "" { meta.push(labels.cvss + " " + f.cvss_score) }
+  if f.confidence != "" { meta.push(lower(labels.confidence) + ": " + f.confidence) }
   if f.kind != "" { meta.push(f.kind) }
   if meta.len() > 0 {
     block(spacing: 6pt, text(size: 8.5pt, fill: luma(120), meta.join("  ·  ")))
@@ -176,11 +178,12 @@
   } else { "" }
 }
 
-// A reference list block (only when refs is non-empty).
-#let references-block(refs) = {
+// A reference list block (only when refs is non-empty). `label` is the
+// localized "References" heading (`doc.labels.references`).
+#let references-block(refs, label) = {
   if refs.len() > 0 {
     block(spacing: 6pt, {
-      text(size: 9pt, weight: "semibold", "References")
+      text(size: 9pt, weight: "semibold", label)
       list(..refs.map(r => text(size: 9pt, link(r))))
     })
   }
@@ -189,9 +192,9 @@
 // Evidence images for a finding. Each image is its raw bytes (PNG/JPG/…) from
 // the render IR (`f.images`), rendered as a captioned figure. No-ops when the
 // finding has no images. Width is capped so large screenshots stay on the page.
-#let finding-images(f) = {
+#let finding-images(f, label) = {
   if "images" in f and f.images.len() > 0 {
-    block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, "Screenshots"))
+    block(spacing: 6pt, text(weight: "semibold", size: 10pt, fill: accent, label))
     for img in f.images {
       block(spacing: 8pt, {
         figure(

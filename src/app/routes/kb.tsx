@@ -26,7 +26,7 @@ import {
   useKbEntries,
   useUpdateKbEntry,
 } from "@/lib/queries/use-kb";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 import { SEVERITY_ORDER, severityRank } from "@/lib/format";
 import type { KbEntry, KbPatch, NewKbEntry, Severity } from "@/lib/types";
 
@@ -78,7 +78,7 @@ export function KnowledgeBase() {
   const handleCreate = (input: NewKbEntry) =>
     createEntry.mutate(input, {
       onSuccess: () => setFormOpen(false),
-      onError: (err) => toast.error(asIpcError(err).message || t("kb.createError")),
+      onError: (err) => toast.error(errorMessage(err, "kb.createError")),
     });
 
   const handleUpdate = (id: string, patch: KbPatch) =>
@@ -86,7 +86,7 @@ export function KnowledgeBase() {
       { id, patch },
       {
         onSuccess: () => setFormOpen(false),
-        onError: (err) => toast.error(asIpcError(err).message),
+        onError: (err) => toast.error(errorMessage(err)),
       },
     );
 
@@ -100,14 +100,14 @@ export function KnowledgeBase() {
     setPendingDelete(null);
     if (!entry) return;
     deleteEntry.mutate(entry.id, {
-      onError: (err) => toast.error(asIpcError(err).message),
+      onError: (err) => toast.error(errorMessage(err)),
     });
   };
 
   const handleImport = () =>
     importBundled.mutate(undefined, {
       onSuccess: (count) => toast.success(t("kb.importSuccess", { count })),
-      onError: (err) => toast.error(asIpcError(err).message || t("kb.importError")),
+      onError: (err) => toast.error(errorMessage(err, "kb.importError")),
     });
 
   return (

@@ -9,84 +9,102 @@ import { cn } from "@/lib/utils";
 // CVSS version handled by the calculator.
 export type CvssVersion = "3.1" | "4.0";
 
-// A base-metric definition: its key, a label, and the ordered list of allowed
-// values (value code + human label). The first value is the default.
+// A base-metric definition: its key, an i18n label key, and the ordered list of
+// allowed values (value code + i18n value-label key). The first value is the
+// default. All label keys resolve under the `cvss.metrics.*` namespace via t().
 interface MetricDef {
   key: string;
   label: string;
   values: { code: string; label: string }[];
 }
 
+// Shared value-label keys (FIRST.org value names reused across metrics).
+const V = {
+  network: "cvss.metrics.values.network",
+  adjacent: "cvss.metrics.values.adjacent",
+  local: "cvss.metrics.values.local",
+  physical: "cvss.metrics.values.physical",
+  low: "cvss.metrics.values.low",
+  high: "cvss.metrics.values.high",
+  none: "cvss.metrics.values.none",
+  required: "cvss.metrics.values.required",
+  unchanged: "cvss.metrics.values.unchanged",
+  changed: "cvss.metrics.values.changed",
+  present: "cvss.metrics.values.present",
+  passive: "cvss.metrics.values.passive",
+  active: "cvss.metrics.values.active",
+} as const;
+
 // CVSS 3.1 base metric group (https://www.first.org/cvss/v3.1/specification-document).
 const METRICS_31: MetricDef[] = [
   {
     key: "AV",
-    label: "Attack Vector",
+    label: "cvss.metrics.AV",
     values: [
-      { code: "N", label: "Network" },
-      { code: "A", label: "Adjacent" },
-      { code: "L", label: "Local" },
-      { code: "P", label: "Physical" },
+      { code: "N", label: V.network },
+      { code: "A", label: V.adjacent },
+      { code: "L", label: V.local },
+      { code: "P", label: V.physical },
     ],
   },
   {
     key: "AC",
-    label: "Attack Complexity",
+    label: "cvss.metrics.AC",
     values: [
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
   {
     key: "PR",
-    label: "Privileges Required",
+    label: "cvss.metrics.PR",
     values: [
-      { code: "N", label: "None" },
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "N", label: V.none },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
   {
     key: "UI",
-    label: "User Interaction",
+    label: "cvss.metrics.UI",
     values: [
-      { code: "N", label: "None" },
-      { code: "R", label: "Required" },
+      { code: "N", label: V.none },
+      { code: "R", label: V.required },
     ],
   },
   {
     key: "S",
-    label: "Scope",
+    label: "cvss.metrics.S",
     values: [
-      { code: "U", label: "Unchanged" },
-      { code: "C", label: "Changed" },
+      { code: "U", label: V.unchanged },
+      { code: "C", label: V.changed },
     ],
   },
   {
     key: "C",
-    label: "Confidentiality",
+    label: "cvss.metrics.C",
     values: [
-      { code: "N", label: "None" },
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "N", label: V.none },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
   {
     key: "I",
-    label: "Integrity",
+    label: "cvss.metrics.I",
     values: [
-      { code: "N", label: "None" },
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "N", label: V.none },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
   {
     key: "A",
-    label: "Availability",
+    label: "cvss.metrics.A",
     values: [
-      { code: "N", label: "None" },
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "N", label: V.none },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
 ];
@@ -95,100 +113,100 @@ const METRICS_31: MetricDef[] = [
 const METRICS_40: MetricDef[] = [
   {
     key: "AV",
-    label: "Attack Vector",
+    label: "cvss.metrics.AV",
     values: [
-      { code: "N", label: "Network" },
-      { code: "A", label: "Adjacent" },
-      { code: "L", label: "Local" },
-      { code: "P", label: "Physical" },
+      { code: "N", label: V.network },
+      { code: "A", label: V.adjacent },
+      { code: "L", label: V.local },
+      { code: "P", label: V.physical },
     ],
   },
   {
     key: "AC",
-    label: "Attack Complexity",
+    label: "cvss.metrics.AC",
     values: [
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
   {
     key: "AT",
-    label: "Attack Requirements",
+    label: "cvss.metrics.AT",
     values: [
-      { code: "N", label: "None" },
-      { code: "P", label: "Present" },
+      { code: "N", label: V.none },
+      { code: "P", label: V.present },
     ],
   },
   {
     key: "PR",
-    label: "Privileges Required",
+    label: "cvss.metrics.PR",
     values: [
-      { code: "N", label: "None" },
-      { code: "L", label: "Low" },
-      { code: "H", label: "High" },
+      { code: "N", label: V.none },
+      { code: "L", label: V.low },
+      { code: "H", label: V.high },
     ],
   },
   {
     key: "UI",
-    label: "User Interaction",
+    label: "cvss.metrics.UI",
     values: [
-      { code: "N", label: "None" },
-      { code: "P", label: "Passive" },
-      { code: "A", label: "Active" },
+      { code: "N", label: V.none },
+      { code: "P", label: V.passive },
+      { code: "A", label: V.active },
     ],
   },
   {
     key: "VC",
-    label: "Confidentiality (VC)",
+    label: "cvss.metrics.VC",
     values: [
-      { code: "H", label: "High" },
-      { code: "L", label: "Low" },
-      { code: "N", label: "None" },
+      { code: "H", label: V.high },
+      { code: "L", label: V.low },
+      { code: "N", label: V.none },
     ],
   },
   {
     key: "VI",
-    label: "Integrity (VI)",
+    label: "cvss.metrics.VI",
     values: [
-      { code: "H", label: "High" },
-      { code: "L", label: "Low" },
-      { code: "N", label: "None" },
+      { code: "H", label: V.high },
+      { code: "L", label: V.low },
+      { code: "N", label: V.none },
     ],
   },
   {
     key: "VA",
-    label: "Availability (VA)",
+    label: "cvss.metrics.VA",
     values: [
-      { code: "H", label: "High" },
-      { code: "L", label: "Low" },
-      { code: "N", label: "None" },
+      { code: "H", label: V.high },
+      { code: "L", label: V.low },
+      { code: "N", label: V.none },
     ],
   },
   {
     key: "SC",
-    label: "Subsequent Confidentiality (SC)",
+    label: "cvss.metrics.SC",
     values: [
-      { code: "H", label: "High" },
-      { code: "L", label: "Low" },
-      { code: "N", label: "None" },
+      { code: "H", label: V.high },
+      { code: "L", label: V.low },
+      { code: "N", label: V.none },
     ],
   },
   {
     key: "SI",
-    label: "Subsequent Integrity (SI)",
+    label: "cvss.metrics.SI",
     values: [
-      { code: "H", label: "High" },
-      { code: "L", label: "Low" },
-      { code: "N", label: "None" },
+      { code: "H", label: V.high },
+      { code: "L", label: V.low },
+      { code: "N", label: V.none },
     ],
   },
   {
     key: "SA",
-    label: "Subsequent Availability (SA)",
+    label: "cvss.metrics.SA",
     values: [
-      { code: "H", label: "High" },
-      { code: "L", label: "Low" },
-      { code: "N", label: "None" },
+      { code: "H", label: V.high },
+      { code: "L", label: V.low },
+      { code: "N", label: V.none },
     ],
   },
 ];
@@ -338,7 +356,7 @@ export function CvssCalculator({
         {metricsFor(version).map((m) => (
           <div key={m.key} className="space-y-1">
             <Label className="text-[11px] text-muted-foreground">
-              {m.label} <span className="font-mono">({m.key})</span>
+              {t(m.label)} <span className="font-mono">({m.key})</span>
             </Label>
             <div className="flex flex-wrap gap-1">
               {m.values.map((val) => (
@@ -349,7 +367,7 @@ export function CvssCalculator({
                   variant={selections[m.key] === val.code ? "brand" : "outline"}
                   className="h-7 px-2 text-xs"
                   onClick={() => setMetric(m.key, val.code)}
-                  title={val.label}
+                  title={t(val.label)}
                 >
                   {val.code}
                 </Button>

@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 import { canvasToPngBytes, objectUrlFromBytes } from "@/lib/image";
 import {
   useAddEvidenceImage,
@@ -236,11 +236,11 @@ export function Annotator({
       try {
         await deleteImage.mutateAsync(source.id);
       } catch (delErr) {
-        toast.error(asIpcError(delErr).message || t("annotator.deleteOriginalError"));
+        toast.error(errorMessage(delErr, "annotator.deleteOriginalError"));
       }
       onOpenChange(false);
     } catch (err) {
-      toast.error(asIpcError(err).message || t("annotator.saveError"));
+      toast.error(errorMessage(err, "annotator.saveError"));
     }
   };
 

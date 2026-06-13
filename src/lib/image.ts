@@ -1,5 +1,7 @@
 // Helpers for evidence-image byte handling and MIME inference.
 
+import i18n from "@/i18n";
+
 const EXT_TO_MIME: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -33,7 +35,7 @@ export function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<number[]> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
-        reject(new Error("Canvas export failed"));
+        reject(new Error(i18n.t("image.canvasExportFailed")));
         return;
       }
       blob

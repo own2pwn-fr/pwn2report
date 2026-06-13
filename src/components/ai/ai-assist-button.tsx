@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { aiComplete, asIpcError } from "@/lib/ipc";
+import { aiComplete, errorMessage } from "@/lib/ipc";
 import { useAiEnabled } from "@/lib/queries/use-ai";
 
 /** The set of rewrite tasks the assist button offers. */
@@ -101,7 +101,7 @@ export function AiAssistButton({
       const out = await aiComplete(buildPrompt(task, fieldLabel, value), SYSTEM_PROMPT);
       setPreview(out.trim());
     } catch (err) {
-      toast.error(asIpcError(err).message || t("ai.error"));
+      toast.error(errorMessage(err, "ai.error"));
     } finally {
       setBusy(false);
     }

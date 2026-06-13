@@ -6,6 +6,7 @@
 pub mod content_model;
 pub mod docx;
 pub mod html;
+pub mod labels;
 pub mod markdown;
 pub mod markup;
 pub mod typst_pdf;

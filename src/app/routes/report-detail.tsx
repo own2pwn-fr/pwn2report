@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReportLanguageSelect } from "@/components/report-language-select";
 import { ReportTypeBadge } from "@/components/report-type-badge";
 import { EmptyState } from "@/components/empty-state";
 import { FindingCard } from "@/components/findings/finding-card";
@@ -28,7 +29,7 @@ import {
   useImportFindings,
   useUpdateFinding,
 } from "@/lib/queries/use-findings";
-import { asIpcError } from "@/lib/ipc";
+import { errorMessage } from "@/lib/ipc";
 import { useDebouncedCallback } from "@/lib/use-debounced-callback";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { severityRank } from "@/lib/format";
@@ -159,7 +160,7 @@ export function ReportDetail() {
 
   const commit = (patch: ReportPatch) =>
     updateReport.mutate(patch, {
-      onError: (err) => toast.error(asIpcError(err).message),
+      onError: (err) => toast.error(errorMessage(err)),
     });
 
   const openCreate = () => {
@@ -175,7 +176,7 @@ export function ReportDetail() {
   const handleCreate = (input: NewFinding) =>
     createFinding.mutate(input, {
       onSuccess: () => setFormOpen(false),
-      onError: (err) => toast.error(asIpcError(err).message || t("findings.createError")),
+      onError: (err) => toast.error(errorMessage(err, "findings.createError")),
     });
 
   const handleUpdate = (findingId: string, patch: FindingPatch) =>
@@ -183,7 +184,7 @@ export function ReportDetail() {
       { id: findingId, patch },
       {
         onSuccess: () => setFormOpen(false),
-        onError: (err) => toast.error(asIpcError(err).message),
+        onError: (err) => toast.error(errorMessage(err)),
       },
     );
 
@@ -197,7 +198,7 @@ export function ReportDetail() {
       undoLabel: t("common.undo"),
       perform: () =>
         deleteFinding.mutate(f.id, {
-          onError: (err) => toast.error(asIpcError(err).message),
+          onError: (err) => toast.error(errorMessage(err)),
         }),
     });
   };
@@ -208,7 +209,7 @@ export function ReportDetail() {
         setKbPickerOpen(false);
         toast.success(t("findings.kbPicker.added"));
       },
-      onError: (err) => toast.error(asIpcError(err).message || t("findings.kbPicker.error")),
+      onError: (err) => toast.error(errorMessage(err, "findings.kbPicker.error")),
     });
 
   const handleImport = (format: ImportFormat, content: string) =>
@@ -219,7 +220,7 @@ export function ReportDetail() {
           setImportOpen(false);
           toast.success(t("findings.import.success", { count }));
         },
-        onError: (err) => toast.error(asIpcError(err).message || t("findings.import.error")),
+        onError: (err) => toast.error(errorMessage(err, "findings.import.error")),
       },
     );
 
@@ -268,6 +269,11 @@ export function ReportDetail() {
           <CardTitle className="text-base">{t("report.details")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
+          <ReportLanguageSelect
+            value={report.language}
+            onChange={(language) => commit({ language })}
+            className="max-w-xs"
+          />
           <DebouncedField
             label={t("report.execSummary")}
             value={report.exec_summary}

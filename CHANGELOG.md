@@ -26,7 +26,7 @@ All notable changes to this project are documented here. The format is based on
 ### Data-integrity fixes (storage + sync)
 - **Real migration framework**: the schema is now applied through an ordered, idempotent
   migration ladder keyed off `PRAGMA user_version` (previously stamped but never read). Fresh
-  installs run v1..v4; older vaults run only their missing steps. `SCHEMA_VERSION` bumped to **4**.
+  installs run v1..v5; older vaults run only their missing steps. `SCHEMA_VERSION` bumped to **5**.
 - **Forward-compat guard**: opening a vault whose on-disk schema is newer than the running build
   is refused with a new `IncompatibleVault` error instead of silently downgrading.
 - **Connection hardening pragmas** on every create/open: `busy_timeout=5000`, `secure_delete=ON`,
@@ -39,6 +39,18 @@ All notable changes to this project are documented here. The format is based on
   (added to every syncable table) and bump `updated_at`; live queries filter `deleted_at IS NULL`.
   Tombstones travel in the sync bundle and win LWW, so a delete on one device removes the row on
   peers and a stale bundle can no longer resurrect it. `SyncSummary` gains a `deleted` counter.
+
+### Localized exports (EN/FR)
+- **Per-report export language**: a `language` column (`reports`, `SCHEMA_VERSION` bumped to **5**,
+  idempotent `ADD COLUMN … DEFAULT 'en'`) drives all export labels. `Report`/`NewReport`/`ReportPatch`
+  gain a `language` field (serde `language`, default `"en"`) so the UI can set it per report.
+- **Label dictionary** (`render/labels.rs`): every section title, severity name, and per-finding
+  label (Summary/Root cause/Attack vector/…/Remediation/PoC/References/Evidence/Screenshots/CVSS,
+  report-type names, "no findings" fallback) has full English + French tables; unknown codes fall
+  back to English. The labels + language flow through the `ReportDocument` IR into every renderer.
+- **Renderers read labels, not literals**: Markdown/HTML/DOCX and the three Typst themes emit the
+  localized strings; HTML sets `<html lang="…">` and the themes `#set text(lang: doc.lang)` so
+  hyphenation/typography follow the report language. (Dates stay ISO `YYYY-MM-DD`.)
 
 ### Editor robustness (data-loss guards)
 - **Finding editor**: dirty-state tracking with a discard-confirm dialog and a localStorage draft

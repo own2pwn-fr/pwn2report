@@ -14,22 +14,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { asIpcError, exportDocx, exportHtml, exportMarkdown, exportPdf } from "@/lib/ipc";
+import { errorMessage, exportDocx, exportHtml, exportMarkdown, exportPdf } from "@/lib/ipc";
 import type { Report } from "@/lib/types";
 
 type Format = "pdf" | "docx" | "markdown" | "html";
 
 interface FormatSpec {
   ext: string;
-  filterName: string;
+  /** i18n key for the save-dialog filter name. */
+  filterNameKey: string;
   binary: boolean;
 }
 
 const SPECS: Record<Format, FormatSpec> = {
-  pdf: { ext: "pdf", filterName: "PDF", binary: true },
-  docx: { ext: "docx", filterName: "Word document", binary: true },
-  markdown: { ext: "md", filterName: "Markdown", binary: false },
-  html: { ext: "html", filterName: "HTML", binary: false },
+  pdf: { ext: "pdf", filterNameKey: "export.filter.pdf", binary: true },
+  docx: { ext: "docx", filterNameKey: "export.filter.docx", binary: true },
+  markdown: { ext: "md", filterNameKey: "export.filter.markdown", binary: false },
+  html: { ext: "html", filterNameKey: "export.filter.html", binary: false },
 };
 
 /** Lowercase, hyphenated slug for a default export filename. */
@@ -61,10 +62,11 @@ export function ExportMenu({ report }: { report: Report }) {
           ? await exportMarkdown(report.id)
           : await exportHtml(report.id);
 
+      const filterName = t(spec.filterNameKey);
       const defaultName = `${slugify(report.client)}-${slugify(report.title)}.${spec.ext}`;
       const path = await save({
         defaultPath: defaultName,
-        filters: [{ name: spec.filterName, extensions: [spec.ext] }],
+        filters: [{ name: filterName, extensions: [spec.ext] }],
       });
       if (!path) {
         toast.message(t("report.exportCancelled"));
@@ -77,9 +79,9 @@ export function ExportMenu({ report }: { report: Report }) {
         await writeTextFile(path, data as string);
       }
       await openPath(path);
-      toast.success(t("report.exportSuccessFormat", { format: spec.filterName }));
+      toast.success(t("report.exportSuccessFormat", { format: filterName }));
     } catch (err) {
-      toast.error(asIpcError(err).message || t("report.exportError"));
+      toast.error(errorMessage(err, "report.exportError"));
     } finally {
       setBusy(null);
     }
